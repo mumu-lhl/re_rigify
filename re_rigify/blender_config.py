@@ -10,9 +10,31 @@ from bpy.props import CollectionProperty, EnumProperty, IntProperty, StringPrope
 from .core import FORMAT_NAME, SCHEMA_VERSION, normalize_config
 
 
+def _refresh_parameter_carrier(item, context):
+    obj = getattr(context, "object", None)
+    if not obj or obj.type != "ARMATURE" or obj.data != item.id_data:
+        return
+    settings = obj.data.re_rigify
+    index = next((index for index, candidate in enumerate(settings.bones) if candidate == item), -1)
+    if index >= 0 and item.bone_name and item.bone_name in obj.data.bones:
+        from .ui import prepare_parameter_carrier
+        prepare_parameter_carrier(context, obj, item, index)
+
+
+def _refresh_active_bone(settings, context):
+    obj = getattr(context, "object", None)
+    if not obj or obj.type != "ARMATURE" or obj.data != settings.id_data or not settings.bones:
+        return
+    index = min(settings.active_bone_index, len(settings.bones) - 1)
+    item = settings.bones[index]
+    if item.bone_name and item.bone_name in obj.data.bones:
+        from .ui import prepare_parameter_carrier
+        prepare_parameter_carrier(context, obj, item, index)
+
+
 class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
-    bone_name: StringProperty(name="Bone")
-    rigify_type: StringProperty(name="Rigify Type")
+    bone_name: StringProperty(name="Bone", update=_refresh_parameter_carrier)
+    rigify_type: StringProperty(name="Rigify Type", update=_refresh_parameter_carrier)
     parameters_json: StringProperty(name="Parameters", default="{}")
 
 
@@ -37,7 +59,7 @@ class RERIGIFY_PG_CollectionConfig(bpy.types.PropertyGroup):
 
 class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
     bones: CollectionProperty(type=RERIGIFY_PG_BoneConfig)
-    active_bone_index: IntProperty(default=0)
+    active_bone_index: IntProperty(default=0, update=_refresh_active_bone)
     collections: CollectionProperty(type=RERIGIFY_PG_CollectionConfig)
     active_collection_index: IntProperty(default=0)
     validation_message: StringProperty(default="")

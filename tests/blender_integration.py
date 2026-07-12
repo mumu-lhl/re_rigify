@@ -8,7 +8,13 @@ import bpy
 import re_rigify
 from re_rigify.blender_config import armature_to_payload, payload_to_armature
 from re_rigify.generate import apply_collection_config, validate_bone_parameters
-from re_rigify.ui import ensure_parameter_carrier
+from re_rigify.ui import (
+    _parameter_sync_timer,
+    get_parameter_carrier,
+    prepare_parameter_carrier,
+    refresh_rigify_types,
+    request_parameter_carrier,
+)
 
 
 def make_armature(name, bones):
@@ -60,9 +66,37 @@ try:
 
     bpy.context.view_layer.objects.active = source
     item = source.data.re_rigify.bones[0]
-    carrier = ensure_parameter_carrier(bpy.context, source, item, 0)
+    refresh_rigify_types(bpy.context)
+    assert "basic.raw_copy" in {item.name for item in bpy.context.window_manager.rigify_types}
+
+    carrier = prepare_parameter_carrier(bpy.context, source, item, 0)
     assert carrier.name == "spine"
     assert bpy.context.view_layer.objects.active == source
+    assert get_parameter_carrier(source, item, 0) == carrier
+    before = item.parameters_json
+    carrier.rigify_parameters.relink_constraints = not carrier.rigify_parameters.relink_constraints
+    _parameter_sync_timer()
+    assert item.parameters_json != before
+
+    re_rigify.ui.remove_parameter_carrier()
+    request_parameter_carrier(source, item, 0)
+    _parameter_sync_timer()
+    assert get_parameter_carrier(source, item, 0) is not None
+
+    removed = source.copy()
+    removed.data = source.data.copy()
+    bpy.context.scene.collection.objects.link(removed)
+    removed_settings = removed.data.re_rigify
+    removed_settings.bones.clear()
+    removed_item = removed_settings.bones.add()
+    removed_item.bone_name = removed.data.bones[0].name
+    removed_item.rigify_type = "basic.raw_copy"
+    prepare_parameter_carrier(bpy.context, removed, removed_item, 0)
+    removed_data = removed.data
+    bpy.data.objects.remove(removed, do_unlink=True)
+    bpy.data.armatures.remove(removed_data)
+    assert _parameter_sync_timer() == re_rigify.ui.SYNC_INTERVAL
+    assert re_rigify.ui._bound_armature_name is None
 
     errors = validate_bone_parameters(bpy.context, source, [{
         "bone_name": "spine",
