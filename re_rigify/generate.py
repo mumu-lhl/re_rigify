@@ -97,7 +97,29 @@ def duplicate_as_metarig(source: bpy.types.Object) -> bpy.types.Object:
     duplicate.name = f"{source.name}_metarig"
     for collection in source.users_collection:
         collection.objects.link(duplicate)
+    from .drive import remove_drive_constraints
+    remove_drive_constraints(duplicate)
     return duplicate
+
+
+def prepare_metarig(source: bpy.types.Object) -> bpy.types.Object:
+    """Create the persistent metarig once, then refresh it for regeneration."""
+    metarig = source.re_rigify_metarig or bpy.data.objects.get(f"{source.name}_metarig")
+    target_rig = source.re_rigify_generated_rig or bpy.data.objects.get(f"{source.name}_rig")
+    if metarig and metarig != source and metarig.type == "ARMATURE":
+        old_data = metarig.data
+        metarig.data = source.data.copy()
+        metarig.matrix_world = source.matrix_world.copy()
+        if old_data.users == 0:
+            bpy.data.armatures.remove(old_data)
+        from .drive import remove_drive_constraints
+        remove_drive_constraints(metarig)
+    else:
+        metarig = duplicate_as_metarig(source)
+        source.re_rigify_metarig = metarig
+    if target_rig and target_rig != source and target_rig.type == "ARMATURE":
+        metarig.data.rigify_target_rig = target_rig
+    return metarig
 
 
 def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: dict) -> bpy.types.Object:
@@ -109,7 +131,7 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
     try:
         if context.object and context.object.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
-        duplicate = duplicate_as_metarig(source)
+        duplicate = prepare_metarig(source)
         apply_bone_config(duplicate, payload["bones"])
         apply_collection_config(duplicate, payload["collections"])
         bpy.ops.object.select_all(action="DESELECT")
@@ -125,6 +147,8 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         result_obj = context.view_layer.objects.active
         if result_obj == duplicate and rigs:
             result_obj = rigs[-1]
+        source.re_rigify_metarig = duplicate
+        source.re_rigify_generated_rig = result_obj
         return result_obj
     except Exception:
         for obj in list(bpy.data.objects):

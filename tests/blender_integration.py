@@ -8,6 +8,8 @@ import bpy
 import re_rigify
 from re_rigify.blender_config import armature_to_payload, payload_to_armature
 from re_rigify.generate import apply_collection_config, validate_bone_parameters
+from re_rigify.operators import select_only
+from re_rigify.drive import connect_source_to_rig, remove_drive_constraints
 from re_rigify.ui import (
     _load_pending_parameter_carrier,
     flush_parameter_carrier,
@@ -74,11 +76,25 @@ try:
     duplicate = source.copy()
     duplicate.data = source.data.copy()
     bpy.context.scene.collection.objects.link(duplicate)
+    select_only(bpy.context, duplicate)
+    assert bpy.context.view_layer.objects.active == duplicate
+    assert list(bpy.context.selected_objects) == [duplicate]
     apply_collection_config(duplicate, payload["collections"])
     collection = duplicate.data.collections_all["Arms"]
     assert collection.rigify_ui_row == 1
     assert collection.rigify_ui_title == "Arm Controls"
     assert {bone.name for bone in collection.bones} == {"upper_arm.L", "upper_arm.R"}
+
+    mapped, unmatched = connect_source_to_rig(source, duplicate)
+    assert mapped == len(source.pose.bones)
+    assert unmatched == []
+    constraint = source.pose.bones["spine"].constraints[-1]
+    assert constraint.name.startswith("Re-Rigify Drive")
+    assert constraint.target == duplicate
+    assert constraint.subtarget == "spine"
+    assert constraint.owner_space == "LOCAL"
+    assert constraint.target_space == "LOCAL"
+    assert remove_drive_constraints(source) == mapped
 
     bpy.context.view_layer.objects.active = source
     item = source.data.re_rigify.bones[0]

@@ -25,6 +25,14 @@ class ValidationResult:
         return not self.errors
 
 
+def choose_drive_target(source_bone_name: str, target_bone_names: Iterable[str]) -> str | None:
+    names = set(target_bone_names)
+    for candidate in (f"DEF-{source_bone_name}", f"ORG-{source_bone_name}", source_bone_name):
+        if candidate in names:
+            return candidate
+    return None
+
+
 def mirror_parameter_value(value: Any, name_mapper) -> Any:
     """Recursively mirror bone-name strings inside Rigify parameter values."""
     if isinstance(value, dict):

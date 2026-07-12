@@ -192,8 +192,6 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
         if settings.bones:
             item = settings.bones[settings.active_bone_index]
             bones_box.prop_search(item, "bone_name", obj.data, "bones", text="Bone")
-            if obj.mode == "OBJECT":
-                bones_box.label(text="Pose/Edit Mode enables the bone eyedropper", icon="INFO")
             refresh_rigify_types(context)
             bones_box.prop_search(item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type")
             bones_box.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
@@ -244,6 +242,12 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
         row.operator("re_rigify.export_config", text="Export", icon="EXPORT")
         layout.operator("re_rigify.validate", icon="CHECKMARK")
         layout.operator("re_rigify.generate", icon="ARMATURE_DATA")
+        drive_box = layout.box()
+        drive_box.label(text="Drive Original Armature")
+        drive_box.prop(obj, "re_rigify_generated_rig", text="Generated Rig")
+        row = drive_box.row(align=True)
+        row.operator("re_rigify.connect_drive", icon="CONSTRAINT_BONE")
+        row.operator("re_rigify.remove_drive", icon="X")
         if settings.validation_message:
             box = layout.box()
             for line in settings.validation_message.splitlines():

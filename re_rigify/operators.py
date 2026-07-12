@@ -17,12 +17,23 @@ from .core import (
     validate_config,
 )
 from .generate import generate_rig, validate_bone_parameters
+from .drive import connect_source_to_rig, remove_drive_constraints
 from .rigify_adapter import available_rig_types, is_rigify_enabled
 
 
 def active_armature(context):
     obj = context.object
     return obj if obj and obj.type == "ARMATURE" else None
+
+
+def select_only(context, obj):
+    """Select one object without invoking context-sensitive selection operators."""
+    for candidate in context.view_layer.objects:
+        candidate.select_set(False)
+    obj.hide_set(False)
+    obj.hide_select = False
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
 
 
 def _add_selected_bones_to_active_collection(settings):
@@ -314,12 +325,48 @@ class RERIGIFY_OT_Generate(bpy.types.Operator):
             return {"CANCELLED"}
         try:
             generated = generate_rig(context, obj, armature_to_payload(obj.data))
+            mapped, unmatched = connect_source_to_rig(obj, generated)
         except Exception as exc:
             self.report({"ERROR"}, f"Rigify generation failed: {exc}")
             return {"CANCELLED"}
-        bpy.ops.object.select_all(action="DESELECT")
-        generated.select_set(True)
-        context.view_layer.objects.active = generated
+        select_only(context, generated)
+        self.report(
+            {"INFO"},
+            f"Generated rig drives {mapped} source bones; {len(unmatched)} unmatched",
+        )
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_ConnectDrive(bpy.types.Operator):
+    bl_idname = "re_rigify.connect_drive"
+    bl_label = "Connect Generated Rig"
+    bl_description = "Drive the original armature from DEF/ORG bones on the generated Rigify rig"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        source = active_armature(context)
+        rig = source.re_rigify_generated_rig
+        if not rig:
+            self.report({"ERROR"}, "Choose a generated Rigify rig")
+            return {"CANCELLED"}
+        try:
+            mapped, unmatched = connect_source_to_rig(source, rig)
+        except (TypeError, ValueError) as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+        self.report({"INFO"}, f"Connected {mapped} bones; {len(unmatched)} unmatched")
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
+    bl_idname = "re_rigify.remove_drive"
+    bl_label = "Remove Rigify Drive"
+    bl_description = "Remove only the Copy Transforms constraints created by Re-Rigify"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        removed = remove_drive_constraints(active_armature(context))
+        self.report({"INFO"}, f"Removed {removed} Re-Rigify constraints")
         return {"FINISHED"}
 
 
@@ -328,7 +375,8 @@ CLASSES = (
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,
     RERIGIFY_OT_MarkAllBones, RERIGIFY_OT_CollectionAddMarkedBones,
     RERIGIFY_OT_RuleAdd, RERIGIFY_OT_RuleRemove,
-    RERIGIFY_OT_Validate, RERIGIFY_OT_Export, RERIGIFY_OT_Import, RERIGIFY_OT_Generate,
+    RERIGIFY_OT_Validate, RERIGIFY_OT_Export, RERIGIFY_OT_Import,
+    RERIGIFY_OT_Generate, RERIGIFY_OT_ConnectDrive, RERIGIFY_OT_RemoveDrive,
 )
 
 

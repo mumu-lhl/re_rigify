@@ -2,6 +2,7 @@ import unittest
 
 from re_rigify.core import (
     ConfigError,
+    choose_drive_target,
     infer_rigify_topology,
     normalize_config,
     mirror_parameter_value,
@@ -36,6 +37,15 @@ class ResolveCollectionRulesTests(unittest.TestCase):
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def test_drive_target_prefers_def_then_org_then_same_name(self):
+        self.assertEqual(
+            choose_drive_target("Arm_L", {"Arm_L", "ORG-Arm_L", "DEF-Arm_L"}),
+            "DEF-Arm_L",
+        )
+        self.assertEqual(choose_drive_target("Arm_L", {"Arm_L", "ORG-Arm_L"}), "ORG-Arm_L")
+        self.assertEqual(choose_drive_target("Arm_L", {"Arm_L"}), "Arm_L")
+        self.assertIsNone(choose_drive_target("Arm_L", {"DEF-Arm_R"}))
+
     def test_infers_common_disconnected_arm_leg_spine_and_head_topology(self):
         parents = {
             "Spine": "Waist", "Chest": "Spine", "Neck": "Chest", "Head": "Neck",

@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 
 import bpy
-from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
+from bpy.props import (
+    BoolProperty, CollectionProperty, EnumProperty, IntProperty,
+    PointerProperty, StringProperty,
+)
 
 from .core import FORMAT_NAME, SCHEMA_VERSION, normalize_config
 
@@ -125,9 +128,19 @@ def register() -> None:
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.Armature.re_rigify = bpy.props.PointerProperty(type=RERIGIFY_PG_ArmatureConfig)
+    bpy.types.Object.re_rigify_generated_rig = PointerProperty(
+        name="Generated Rigify Rig",
+        type=bpy.types.Object,
+    )
+    bpy.types.Object.re_rigify_metarig = PointerProperty(
+        name="Re-Rigify Metarig",
+        type=bpy.types.Object,
+    )
 
 
 def unregister() -> None:
+    del bpy.types.Object.re_rigify_metarig
+    del bpy.types.Object.re_rigify_generated_rig
     del bpy.types.Armature.re_rigify
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
