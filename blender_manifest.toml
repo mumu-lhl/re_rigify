@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+id = "re_rigify"
+version = "0.1.0"
+name = "Re-Rigify"
+tagline = "Reuse Rigify bone, parameter, collection and UI setups"
+maintainer = "Re-Rigify Contributors"
+type = "add-on"
+blender_version_min = "4.2.0"
+license = ["SPDX:GPL-3.0-or-later"]
+
+[permissions]
+files = "Import and export reusable Rigify configuration JSON files"
+
+[build]
+paths_exclude_pattern = [
+    ".*",
+    "__pycache__/",
+    "tests/",
+]
