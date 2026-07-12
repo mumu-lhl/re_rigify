@@ -2,7 +2,9 @@ import unittest
 
 from re_rigify.core import (
     ConfigError,
+    infer_rigify_topology,
     normalize_config,
+    mirror_parameter_value,
     resolve_collection_rules,
     validate_config,
 )
@@ -34,6 +36,39 @@ class ResolveCollectionRulesTests(unittest.TestCase):
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def test_infers_common_disconnected_arm_leg_spine_and_head_topology(self):
+        parents = {
+            "Spine": "Waist", "Chest": "Spine", "Neck": "Chest", "Head": "Neck",
+            "Elbow_L": "Arm_L", "Wrist_L": "Elbow_L", "ArmRoll_L": "Elbow_L",
+            "Knee_L": "Thigh_L", "Ankle_L": "Knee_L",
+            "Ankle_offset_L": "Ankle_L", "Toe_L": "Ankle_offset_L",
+        }
+        configs = [
+            {"bone_name": "Waist", "rigify_type": "spines.basic_spine"},
+            {"bone_name": "Neck", "rigify_type": "spines.super_head"},
+            {"bone_name": "Arm_L", "rigify_type": "limbs.arm"},
+            {"bone_name": "Thigh_L", "rigify_type": "limbs.leg"},
+        ]
+
+        operations = infer_rigify_topology(configs, parents)
+
+        self.assertIn(("Waist", "Spine", True), operations)
+        self.assertIn(("Spine", "Chest", True), operations)
+        self.assertIn(("Neck", "Head", True), operations)
+        self.assertIn(("Arm_L", "Elbow_L", True), operations)
+        self.assertIn(("Elbow_L", "Wrist_L", True), operations)
+        self.assertIn(("Thigh_L", "Knee_L", True), operations)
+        self.assertIn(("Knee_L", "Ankle_offset_L", True), operations)
+        self.assertIn(("Ankle_offset_L", "Toe_L", True), operations)
+        self.assertIn(("Ankle_offset_L", "Ankle_L", False), operations)
+
+    def test_mirror_parameter_value_recursively_maps_bone_names(self):
+        value = {"target": "Arm_L", "nested": ["Hand_L", 3, True]}
+
+        mirrored = mirror_parameter_value(value, lambda name: name.replace("_L", "_R"))
+
+        self.assertEqual(mirrored, {"target": "Arm_R", "nested": ["Hand_R", 3, True]})
+
     def test_normalize_round_trip_shape(self):
         payload = {
             "format": "re-rigify",

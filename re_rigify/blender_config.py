@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 import bpy
-from bpy.props import CollectionProperty, EnumProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, CollectionProperty, EnumProperty, IntProperty, StringProperty
 
 from .core import FORMAT_NAME, SCHEMA_VERSION, normalize_config
 
@@ -33,6 +33,7 @@ def _refresh_active_bone(settings, context):
 
 
 class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
+    collection_selected: BoolProperty(name="Select for Collection", default=False)
     bone_name: StringProperty(name="Bone", update=_refresh_parameter_carrier)
     rigify_type: StringProperty(name="Rigify Type", update=_refresh_parameter_carrier)
     parameters_json: StringProperty(name="Parameters", default="{}")

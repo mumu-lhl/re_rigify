@@ -9,7 +9,8 @@ import re_rigify
 from re_rigify.blender_config import armature_to_payload, payload_to_armature
 from re_rigify.generate import apply_collection_config, validate_bone_parameters
 from re_rigify.ui import (
-    _parameter_sync_timer,
+    _load_pending_parameter_carrier,
+    flush_parameter_carrier,
     get_parameter_carrier,
     prepare_parameter_carrier,
     refresh_rigify_types,
@@ -55,6 +56,21 @@ try:
     payload_to_armature(source.data, payload)
     assert armature_to_payload(source.data) == payload
 
+    settings = source.data.re_rigify
+    settings.bones[0].collection_selected = True
+    second = settings.bones.add()
+    second.bone_name = "upper_arm.L"
+    second.rigify_type = "basic.raw_copy"
+    second.collection_selected = True
+    settings.active_collection_index = 0
+    assert bpy.ops.re_rigify.collection_add_marked_bones() == {"FINISHED"}
+    exact_rules = {
+        rule.pattern for rule in settings.collections[0].rules if rule.kind == "EXACT"
+    }
+    assert exact_rules == {"spine", "upper_arm.L"}
+    assert not settings.bones[0].collection_selected
+    assert not settings.bones[1].collection_selected
+
     duplicate = source.copy()
     duplicate.data = source.data.copy()
     bpy.context.scene.collection.objects.link(duplicate)
@@ -75,12 +91,12 @@ try:
     assert get_parameter_carrier(source, item, 0) == carrier
     before = item.parameters_json
     carrier.rigify_parameters.relink_constraints = not carrier.rigify_parameters.relink_constraints
-    _parameter_sync_timer()
+    flush_parameter_carrier()
     assert item.parameters_json != before
 
     re_rigify.ui.remove_parameter_carrier()
     request_parameter_carrier(source, item, 0)
-    _parameter_sync_timer()
+    _load_pending_parameter_carrier()
     assert get_parameter_carrier(source, item, 0) is not None
 
     removed = source.copy()
@@ -95,7 +111,7 @@ try:
     removed_data = removed.data
     bpy.data.objects.remove(removed, do_unlink=True)
     bpy.data.armatures.remove(removed_data)
-    assert _parameter_sync_timer() == re_rigify.ui.SYNC_INTERVAL
+    flush_parameter_carrier()
     assert re_rigify.ui._bound_armature_name is None
 
     errors = validate_bone_parameters(bpy.context, source, [{

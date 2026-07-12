@@ -6,7 +6,7 @@ import json
 
 import bpy
 
-from .core import ConfigError, resolve_collection_rules
+from .core import ConfigError, infer_rigify_topology, resolve_collection_rules
 from .rigify_adapter import apply_parameters
 
 
@@ -23,6 +23,13 @@ def apply_bone_config(obj: bpy.types.Object, bones: list[dict]) -> None:
 
 def validate_bone_parameters(context, source: bpy.types.Object, bones: list[dict]) -> tuple[str, ...]:
     """Validate against the active Rigify RNA without touching the source armature."""
+    try:
+        infer_rigify_topology(
+            bones,
+            {bone.name: bone.parent.name if bone.parent else None for bone in source.data.bones},
+        )
+    except ConfigError as exc:
+        return (str(exc),)
     duplicate = source.copy()
     duplicate.data = source.data.copy()
     duplicate.name = "__ReRigify_Validation__"
@@ -40,10 +47,31 @@ def validate_bone_parameters(context, source: bpy.types.Object, bones: list[dict
     return ()
 
 
+def apply_rigify_topology(context, obj: bpy.types.Object, bones: list[dict]) -> None:
+    operations = infer_rigify_topology(
+        bones,
+        {bone.name: bone.parent.name if bone.parent else None for bone in obj.data.bones},
+    )
+    if not operations:
+        return
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit_bones = obj.data.edit_bones
+    for parent_name, child_name, connected in operations:
+        child = edit_bones[child_name]
+        child.parent = edit_bones[parent_name]
+        child.use_connect = connected
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
 def apply_collection_config(obj: bpy.types.Object, collections: list[dict]) -> None:
     armature = obj.data
     resolved = resolve_collection_rules((bone.name for bone in armature.bones), collections)
-    ordered = sorted(collections, key=lambda item: (item["ui_row"], item["row_order"], item["name"]))
+    effective = [dict(item) for item in collections]
+    if effective and not any(item["ui_row"] > 0 for item in effective):
+        # Rigify refuses to generate when no collection has a UI button.
+        effective[0]["ui_row"] = 1
+        effective[0]["row_order"] = 0
+    ordered = sorted(effective, key=lambda item: (item["ui_row"], item["row_order"], item["name"]))
     for source in ordered:
         collection = armature.collections_all.get(source["name"])
         if collection is None:
@@ -87,6 +115,7 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         bpy.ops.object.select_all(action="DESELECT")
         duplicate.select_set(True)
         context.view_layer.objects.active = duplicate
+        apply_rigify_topology(context, duplicate, payload["bones"])
         bpy.ops.object.mode_set(mode="POSE")
         result = bpy.ops.pose.rigify_generate()
         if "FINISHED" not in result:

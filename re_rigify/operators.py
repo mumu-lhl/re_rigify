@@ -6,11 +6,16 @@ import json
 from pathlib import Path
 
 import bpy
-from bpy.props import IntProperty, StringProperty
+from bpy.props import BoolProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
 from .blender_config import armature_to_payload, payload_to_armature
-from .core import ConfigError, normalize_config, validate_config
+from .core import (
+    ConfigError,
+    mirror_parameter_value,
+    normalize_config,
+    validate_config,
+)
 from .generate import generate_rig, validate_bone_parameters
 from .rigify_adapter import available_rig_types, is_rigify_enabled
 
@@ -20,7 +25,29 @@ def active_armature(context):
     return obj if obj and obj.type == "ARMATURE" else None
 
 
+def _add_selected_bones_to_active_collection(settings):
+    marked = [item for item in settings.bones if item.collection_selected]
+    if not marked and settings.bones:
+        marked = [settings.bones[settings.active_bone_index]]
+    if not marked:
+        return 0
+    collection = settings.collections[settings.active_collection_index]
+    existing = {rule.pattern for rule in collection.rules if rule.kind == "EXACT"}
+    added = 0
+    for item in marked:
+        if item.bone_name not in existing:
+            rule = collection.rules.add()
+            rule.kind = "EXACT"
+            rule.pattern = item.bone_name
+            existing.add(item.bone_name)
+            added += 1
+    collection.active_rule_index = max(0, len(collection.rules) - 1)
+    return added
+
+
 def validate_active(context):
+    from .ui import flush_parameter_carrier
+    flush_parameter_carrier()
     obj = active_armature(context)
     if not obj:
         return None, ("Select an armature object",)
@@ -66,10 +93,58 @@ class RERIGIFY_OT_BoneRemove(bpy.types.Operator):
     bl_options = {"UNDO"}
 
     def execute(self, context):
+        from .ui import flush_parameter_carrier, remove_parameter_carrier
+        flush_parameter_carrier()
+        remove_parameter_carrier()
         settings = active_armature(context).data.re_rigify
         if settings.bones:
             settings.bones.remove(settings.active_bone_index)
             settings.active_bone_index = min(settings.active_bone_index, len(settings.bones) - 1)
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
+    bl_idname = "re_rigify.mirror_bone_config"
+    bl_label = "Mirror Configuration to Opposite Side"
+    bl_description = "Copy the active Rigify type and mirrored parameters to the L/R counterpart"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        from rigify.utils.naming import mirror_name
+        from .ui import flush_parameter_carrier, prepare_parameter_carrier, remove_parameter_carrier
+
+        obj = active_armature(context)
+        settings = obj.data.re_rigify
+        if not settings.bones:
+            return {"CANCELLED"}
+        source = settings.bones[settings.active_bone_index]
+        flush_parameter_carrier()
+        target_name = mirror_name(source.bone_name)
+        if target_name == source.bone_name:
+            self.report({"ERROR"}, f"{source.bone_name!r} has no L/R side suffix")
+            return {"CANCELLED"}
+        if target_name not in obj.data.bones:
+            self.report({"ERROR"}, f"Mirrored bone {target_name!r} does not exist")
+            return {"CANCELLED"}
+
+        target_index = next(
+            (index for index, item in enumerate(settings.bones) if item.bone_name == target_name),
+            -1,
+        )
+        target = settings.bones[target_index] if target_index >= 0 else settings.bones.add()
+        if target_index < 0:
+            target_index = len(settings.bones) - 1
+        target.bone_name = target_name
+        target.rigify_type = source.rigify_type
+        target.parameters_json = json.dumps(
+            mirror_parameter_value(json.loads(source.parameters_json or "{}"), mirror_name),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+        remove_parameter_carrier()
+        settings.active_bone_index = target_index
+        prepare_parameter_carrier(context, obj, target, target_index)
+        self.report({"INFO"}, f"Mirrored configuration to {target_name}")
         return {"FINISHED"}
 
 
@@ -82,6 +157,8 @@ class RERIGIFY_OT_CollectionAdd(bpy.types.Operator):
         settings = active_armature(context).data.re_rigify
         item = settings.collections.add()
         item.name = f"Collection {len(settings.collections)}"
+        item.ui_row = 1
+        item.row_order = sum(1 for collection in list(settings.collections)[:-1] if collection.ui_row == 1)
         settings.active_collection_index = len(settings.collections) - 1
         return {"FINISHED"}
 
@@ -99,6 +176,40 @@ class RERIGIFY_OT_CollectionRemove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class RERIGIFY_OT_MarkAllBones(bpy.types.Operator):
+    bl_idname = "re_rigify.mark_all_bones"
+    bl_label = "Select All Configured Bones"
+
+    selected: BoolProperty(default=True)
+
+    def execute(self, context):
+        for item in active_armature(context).data.re_rigify.bones:
+            item.collection_selected = self.selected
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_CollectionAddMarkedBones(bpy.types.Operator):
+    bl_idname = "re_rigify.collection_add_marked_bones"
+    bl_label = "Add Selected Bones to Active Collection"
+    bl_description = "Add checked bones, or the active list bone if none are checked"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        settings = active_armature(context).data.re_rigify
+        if not settings.collections:
+            self.report({"ERROR"}, "Create a bone collection configuration first")
+            return {"CANCELLED"}
+        if not settings.bones:
+            self.report({"ERROR"}, "No configured bones to add")
+            return {"CANCELLED"}
+        collection = settings.collections[settings.active_collection_index]
+        added = _add_selected_bones_to_active_collection(settings)
+        for item in settings.bones:
+            item.collection_selected = False
+        self.report({"INFO"}, f"Added {added} bone(s) to {collection.name}")
+        return {"FINISHED"}
+
+
 class RERIGIFY_OT_RuleAdd(bpy.types.Operator):
     bl_idname = "re_rigify.rule_add"
     bl_label = "Add Bone Matching Rule"
@@ -108,11 +219,7 @@ class RERIGIFY_OT_RuleAdd(bpy.types.Operator):
         settings = active_armature(context).data.re_rigify
         if not settings.collections:
             return {"CANCELLED"}
-        collection = settings.collections[settings.active_collection_index]
-        rule = collection.rules.add()
-        obj = active_armature(context)
-        rule.pattern = obj.data.bones.active.name if obj.data.bones.active else "*"
-        collection.active_rule_index = len(collection.rules) - 1
+        _add_selected_bones_to_active_collection(settings)
         return {"FINISHED"}
 
 
@@ -173,6 +280,9 @@ class RERIGIFY_OT_Import(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         obj = active_armature(context)
+        from .ui import flush_parameter_carrier, remove_parameter_carrier
+        flush_parameter_carrier()
+        remove_parameter_carrier()
         try:
             payload = json.loads(Path(self.filepath).read_text(encoding="utf-8"))
             payload = normalize_config(payload)
@@ -214,8 +324,9 @@ class RERIGIFY_OT_Generate(bpy.types.Operator):
 
 
 CLASSES = (
-    RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove,
+    RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove, RERIGIFY_OT_MirrorBoneConfig,
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,
+    RERIGIFY_OT_MarkAllBones, RERIGIFY_OT_CollectionAddMarkedBones,
     RERIGIFY_OT_RuleAdd, RERIGIFY_OT_RuleRemove,
     RERIGIFY_OT_Validate, RERIGIFY_OT_Export, RERIGIFY_OT_Import, RERIGIFY_OT_Generate,
 )

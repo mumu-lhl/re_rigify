@@ -10,12 +10,10 @@ from .rigify_adapter import apply_parameters, draw_parameters, parameter_json
 
 
 HELPER_NAME = "__ReRigify_Parameter_Carrier__"
-SYNC_INTERVAL = 0.25
-_sync_enabled = False
 _bound_armature_name = None
 _bound_armature_pointer = 0
 _bound_index = -1
-_last_parameter_json = None
+_bound_bone_name = None
 _pending_binding = None
 
 
@@ -40,6 +38,7 @@ def get_parameter_carrier(source, item, index):
 
 def prepare_parameter_carrier(context, source, item, index):
     """Create/sync the helper from an operator or RNA update, never from Panel.draw."""
+    flush_parameter_carrier()
     obj = bpy.data.objects.get(HELPER_NAME)
     source_key = f"{source.data.name}:{len(source.data.bones)}"
     if obj is not None and (obj.get("re_rigify_source") != source_key or item.bone_name not in obj.pose.bones):
@@ -61,11 +60,11 @@ def prepare_parameter_carrier(context, source, item, index):
         apply_parameters(pose_bone.rigify_parameters, json.loads(item.parameters_json or "{}"))
         obj["re_rigify_key"] = key
     global _bound_armature_name, _bound_armature_pointer, _bound_index
-    global _last_parameter_json, _pending_binding
+    global _bound_bone_name, _pending_binding
     _bound_armature_name = source.data.name
     _bound_armature_pointer = source.data.as_pointer()
     _bound_index = index
-    _last_parameter_json = parameter_json(pose_bone)
+    _bound_bone_name = item.bone_name
     _pending_binding = None
     return pose_bone
 
@@ -74,15 +73,15 @@ def request_parameter_carrier(source, item, index):
     """Queue helper creation so Panel.draw never writes Blender ID data."""
     global _pending_binding
     _pending_binding = (source.data.name, source.data.as_pointer(), index)
+    if not bpy.app.timers.is_registered(_load_pending_parameter_carrier):
+        bpy.app.timers.register(_load_pending_parameter_carrier, first_interval=0.0)
 
 
-def _parameter_sync_timer():
-    global _pending_binding, _last_parameter_json
-    if not _sync_enabled:
-        return None
-
+def _load_pending_parameter_carrier():
+    global _pending_binding
     if _pending_binding is not None:
         armature_name, armature_pointer, index = _pending_binding
+        _pending_binding = None
         armature = bpy.data.armatures.get(armature_name)
         if armature and armature.as_pointer() != armature_pointer:
             armature = None
@@ -94,8 +93,11 @@ def _parameter_sync_timer():
             item = armature.re_rigify.bones[index]
             if item.bone_name in armature.bones:
                 prepare_parameter_carrier(bpy.context, source, item, index)
-        _pending_binding = None
+    return None
 
+
+def flush_parameter_carrier():
+    """Persist the active helper on explicit workflow events, without polling."""
     armature = bpy.data.armatures.get(_bound_armature_name) if _bound_armature_name else None
     if armature and armature.as_pointer() != _bound_armature_pointer:
         armature = None
@@ -103,23 +105,19 @@ def _parameter_sync_timer():
         remove_parameter_carrier()
     elif armature is not None and _bound_index < len(armature.re_rigify.bones):
         item = armature.re_rigify.bones[_bound_index]
-        source = next(
-            (obj for obj in bpy.data.objects if obj.type == "ARMATURE" and obj.data == armature),
-            None,
-        )
-        if source:
-            carrier = get_parameter_carrier(source, item, _bound_index)
-            if carrier:
-                current = parameter_json(carrier)
-                if current != _last_parameter_json:
-                    item.parameters_json = current
-                    _last_parameter_json = current
-    return SYNC_INTERVAL
+        helper = bpy.data.objects.get(HELPER_NAME)
+        carrier = helper.pose.bones.get(_bound_bone_name) if helper and helper.pose else None
+        if carrier:
+            item.parameters_json = parameter_json(carrier)
+
+
+def _save_pre(_filepath):
+    flush_parameter_carrier()
 
 
 def remove_parameter_carrier():
     global _bound_armature_name, _bound_armature_pointer, _bound_index
-    global _last_parameter_json, _pending_binding
+    global _bound_bone_name, _pending_binding
     obj = bpy.data.objects.get(HELPER_NAME)
     if obj:
         data = obj.data
@@ -129,12 +127,13 @@ def remove_parameter_carrier():
     _bound_armature_name = None
     _bound_armature_pointer = 0
     _bound_index = -1
-    _last_parameter_json = None
+    _bound_bone_name = None
     _pending_binding = None
 
 
 class RERIGIFY_UL_Bones(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
+        layout.prop(item, "collection_selected", text="")
         layout.label(text=item.bone_name, icon="BONE_DATA")
         layout.label(text=item.rigify_type or "No type")
 
@@ -174,6 +173,22 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
         buttons = row.column(align=True)
         buttons.operator("re_rigify.bone_add", text="", icon="ADD")
         buttons.operator("re_rigify.bone_remove", text="", icon="REMOVE")
+        row = bones_box.row(align=True)
+        op = row.operator("re_rigify.mark_all_bones", text="All")
+        op.selected = True
+        op = row.operator("re_rigify.mark_all_bones", text="None")
+        op.selected = False
+        if settings.collections:
+            target = settings.collections[settings.active_collection_index].name or "Unnamed"
+            bones_box.operator(
+                "re_rigify.collection_add_marked_bones",
+                text=f"Add to Collection: {target}",
+                icon="GROUP_BONE",
+            )
+        else:
+            row = bones_box.row()
+            row.enabled = False
+            row.operator("re_rigify.collection_add_marked_bones", text="Create a Collection First")
         if settings.bones:
             item = settings.bones[settings.active_bone_index]
             bones_box.prop_search(item, "bone_name", obj.data, "bones", text="Bone")
@@ -181,6 +196,7 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
                 bones_box.label(text="Pose/Edit Mode enables the bone eyedropper", icon="INFO")
             refresh_rigify_types(context)
             bones_box.prop_search(item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type")
+            bones_box.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
             carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
             if carrier is not None:
                 try:
@@ -238,19 +254,18 @@ CLASSES = (RERIGIFY_UL_Bones, RERIGIFY_UL_Collections, RERIGIFY_UL_Rules, RERIGI
 
 
 def register():
-    global _sync_enabled
     for cls in CLASSES:
         bpy.utils.register_class(cls)
-    _sync_enabled = True
-    if not bpy.app.timers.is_registered(_parameter_sync_timer):
-        bpy.app.timers.register(_parameter_sync_timer, first_interval=0.0, persistent=True)
+    if _save_pre not in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.append(_save_pre)
 
 
 def unregister():
-    global _sync_enabled
-    _sync_enabled = False
-    if bpy.app.timers.is_registered(_parameter_sync_timer):
-        bpy.app.timers.unregister(_parameter_sync_timer)
+    flush_parameter_carrier()
+    if bpy.app.timers.is_registered(_load_pending_parameter_carrier):
+        bpy.app.timers.unregister(_load_pending_parameter_carrier)
+    if _save_pre in bpy.app.handlers.save_pre:
+        bpy.app.handlers.save_pre.remove(_save_pre)
     remove_parameter_carrier()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

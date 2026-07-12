@@ -25,6 +25,103 @@ class ValidationResult:
         return not self.errors
 
 
+def mirror_parameter_value(value: Any, name_mapper) -> Any:
+    """Recursively mirror bone-name strings inside Rigify parameter values."""
+    if isinstance(value, dict):
+        return {key: mirror_parameter_value(item, name_mapper) for key, item in value.items()}
+    if isinstance(value, list):
+        return [mirror_parameter_value(item, name_mapper) for item in value]
+    if isinstance(value, str):
+        return name_mapper(value)
+    return value
+
+
+def infer_rigify_topology(
+    bone_configs: Iterable[dict[str, Any]], parents: dict[str, str | None]
+) -> list[tuple[str, str, bool]]:
+    """Infer common Rigify chains from disconnected production-skeleton parenting."""
+    children: dict[str, list[str]] = {name: [] for name in parents}
+    for child, parent in parents.items():
+        if parent:
+            children.setdefault(parent, []).append(child)
+
+    def normalized(name: str) -> str:
+        return name.lower().replace(".", "_").replace("-", "_")
+
+    def descendants(root: str) -> list[str]:
+        result, queue = [], list(children.get(root, ()))
+        while queue:
+            name = queue.pop(0)
+            result.append(name)
+            queue.extend(children.get(name, ()))
+        return result
+
+    def find(root: str, keywords: tuple[str, ...], *, exclude: set[str] | None = None) -> str | None:
+        excluded = exclude or set()
+        for keyword in keywords:
+            for name in descendants(root):
+                if name not in excluded and keyword in normalized(name):
+                    return name
+        return None
+
+    operations: list[tuple[str, str, bool]] = []
+    for config in bone_configs:
+        root = config["bone_name"]
+        rig_type = config["rigify_type"]
+        if rig_type == "limbs.arm":
+            lower = find(root, ("elbow", "forearm", "lower_arm"))
+            hand = find(lower, ("wrist", "hand")) if lower else None
+            if not lower or not hand:
+                raise ConfigError(
+                    f"{root!r} ({rig_type}) requires an upper-arm, forearm/elbow, and hand/wrist chain"
+                )
+            operations.extend(((root, lower, True), (lower, hand, True)))
+        elif rig_type == "limbs.leg":
+            knee = find(root, ("knee", "shin", "lower_leg"))
+            foot = find(knee, ("ankle_offset", "foot", "ankle")) if knee else None
+            toe = find(foot, ("toe",)) if foot else None
+            heel = find(knee, ("heel",), exclude={foot, toe} if foot and toe else set()) if knee else None
+            if heel is None and knee:
+                heel = next(
+                    (name for name in descendants(knee)
+                     if name not in {foot, toe} and "ankle" in normalized(name)
+                     and "offset" not in normalized(name)),
+                    None,
+                )
+            if not knee or not foot or not toe or not heel:
+                raise ConfigError(
+                    f"{root!r} ({rig_type}) requires thigh, knee/shin, foot, toe, and heel bones"
+                )
+            operations.extend(
+                ((root, knee, True), (knee, foot, True), (foot, toe, True), (foot, heel, False))
+            )
+        elif rig_type == "spines.basic_spine":
+            chain = [root]
+            current = root
+            while len(chain) < 8:
+                direct = children.get(current, [])
+                preferred = [
+                    name for name in direct
+                    if any(key in normalized(name) for key in ("spine", "chest", "torso"))
+                ]
+                if len(preferred) == 1:
+                    current = preferred[0]
+                elif len(direct) == 1:
+                    current = direct[0]
+                else:
+                    break
+                chain.append(current)
+            if len(chain) < 3:
+                raise ConfigError(f"{root!r} ({rig_type}) requires a chain of at least 3 bones")
+            operations.extend((parent, child, True) for parent, child in zip(chain, chain[1:]))
+        elif rig_type == "spines.super_head":
+            head = find(root, ("head",))
+            if not head:
+                raise ConfigError(f"{root!r} ({rig_type}) requires a connected head child")
+            operations.append((root, head, True))
+    return operations
+
+
 def _require_type(value: Any, expected: type, path: str) -> Any:
     if not isinstance(value, expected):
         raise ConfigError(f"{path} must be {expected.__name__}")
