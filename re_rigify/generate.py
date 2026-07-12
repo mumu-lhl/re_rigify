@@ -103,23 +103,32 @@ def duplicate_as_metarig(source: bpy.types.Object) -> bpy.types.Object:
 
 
 def prepare_metarig(source: bpy.types.Object) -> bpy.types.Object:
-    """Create the persistent metarig once, then refresh it for regeneration."""
-    metarig = source.re_rigify_metarig or bpy.data.objects.get(f"{source.name}_metarig")
+    """Create a temporary metarig that targets the existing generated rig."""
     target_rig = source.re_rigify_generated_rig or bpy.data.objects.get(f"{source.name}_rig")
-    if metarig and metarig != source and metarig.type == "ARMATURE":
-        old_data = metarig.data
-        metarig.data = source.data.copy()
-        metarig.matrix_world = source.matrix_world.copy()
-        if old_data.users == 0:
-            bpy.data.armatures.remove(old_data)
-        from .drive import remove_drive_constraints
-        remove_drive_constraints(metarig)
-    else:
-        metarig = duplicate_as_metarig(source)
-        source.re_rigify_metarig = metarig
+    cleanup_metarigs(source)
+    metarig = duplicate_as_metarig(source)
+    source.re_rigify_metarig = metarig
+    metarig.re_rigify_source_armature = source
+    metarig.hide_viewport = False
+    metarig.hide_select = False
+    metarig.hide_set(False)
     if target_rig and target_rig != source and target_rig.type == "ARMATURE":
         metarig.data.rigify_target_rig = target_rig
     return metarig
+
+
+def cleanup_metarigs(source: bpy.types.Object, keep: bpy.types.Object | None = None) -> int:
+    removed = 0
+    exact_name = f"{source.name}_metarig"
+    numbered_prefix = f"{source.name}_metarig."
+    for obj in list(bpy.data.objects):
+        if obj == keep or obj.type != "ARMATURE":
+            continue
+        marked = obj.re_rigify_source_armature == source
+        if marked or obj.name == exact_name or obj.name.startswith(numbered_prefix):
+            bpy.data.objects.remove(obj, do_unlink=True)
+            removed += 1
+    return removed
 
 
 def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: dict) -> bpy.types.Object:
@@ -147,8 +156,9 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         result_obj = context.view_layer.objects.active
         if result_obj == duplicate and rigs:
             result_obj = rigs[-1]
-        source.re_rigify_metarig = duplicate
         source.re_rigify_generated_rig = result_obj
+        cleanup_metarigs(source)
+        source.re_rigify_metarig = None
         return result_obj
     except Exception:
         for obj in list(bpy.data.objects):

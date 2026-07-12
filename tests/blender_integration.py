@@ -93,7 +93,7 @@ try:
     assert constraint.target == duplicate
     assert constraint.subtarget == "spine"
     assert constraint.owner_space == "LOCAL"
-    assert constraint.target_space == "LOCAL"
+    assert constraint.target_space == "LOCAL_OWNER_ORIENT"
     assert remove_drive_constraints(source) == mapped
 
     bpy.context.view_layer.objects.active = source
@@ -129,6 +129,20 @@ try:
     bpy.data.armatures.remove(removed_data)
     flush_parameter_carrier()
     assert re_rigify.ui._bound_armature_name is None
+
+    pending = source.copy()
+    pending.data = source.data.copy()
+    bpy.context.scene.collection.objects.link(pending)
+    pending_settings = pending.data.re_rigify
+    pending_settings.bones.clear()
+    pending_item = pending_settings.bones.add()
+    pending_item.bone_name = pending.data.bones[0].name
+    pending_item.rigify_type = "basic.raw_copy"
+    request_parameter_carrier(pending, pending_item, 0)
+    pending_data = pending.data
+    bpy.data.objects.remove(pending, do_unlink=True)
+    bpy.data.armatures.remove(pending_data)
+    assert _load_pending_parameter_carrier() is None
 
     errors = validate_bone_parameters(bpy.context, source, [{
         "bone_name": "spine",

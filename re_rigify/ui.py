@@ -38,6 +38,11 @@ def get_parameter_carrier(source, item, index):
 
 def prepare_parameter_carrier(context, source, item, index):
     """Create/sync the helper from an operator or RNA update, never from Panel.draw."""
+    try:
+        if bpy.data.objects.get(source.name) != source or source.as_pointer() == 0:
+            return None
+    except ReferenceError:
+        return None
     flush_parameter_carrier()
     obj = bpy.data.objects.get(HELPER_NAME)
     source_key = f"{source.data.name}:{len(source.data.bones)}"
@@ -72,7 +77,17 @@ def prepare_parameter_carrier(context, source, item, index):
 def request_parameter_carrier(source, item, index):
     """Queue helper creation so Panel.draw never writes Blender ID data."""
     global _pending_binding
-    _pending_binding = (source.data.name, source.data.as_pointer(), index)
+    try:
+        _pending_binding = (
+            source.name,
+            source.as_pointer(),
+            source.data.name,
+            source.data.as_pointer(),
+            index,
+        )
+    except ReferenceError:
+        _pending_binding = None
+        return
     if not bpy.app.timers.is_registered(_load_pending_parameter_carrier):
         bpy.app.timers.register(_load_pending_parameter_carrier, first_interval=0.0)
 
@@ -80,19 +95,23 @@ def request_parameter_carrier(source, item, index):
 def _load_pending_parameter_carrier():
     global _pending_binding
     if _pending_binding is not None:
-        armature_name, armature_pointer, index = _pending_binding
+        object_name, object_pointer, armature_name, armature_pointer, index = _pending_binding
         _pending_binding = None
-        armature = bpy.data.armatures.get(armature_name)
-        if armature and armature.as_pointer() != armature_pointer:
-            armature = None
-        source = next(
-            (obj for obj in bpy.data.objects if armature and obj.type == "ARMATURE" and obj.data == armature),
-            None,
-        )
-        if armature and source and index < len(armature.re_rigify.bones):
-            item = armature.re_rigify.bones[index]
-            if item.bone_name in armature.bones:
-                prepare_parameter_carrier(bpy.context, source, item, index)
+        try:
+            source = bpy.data.objects.get(object_name)
+            armature = bpy.data.armatures.get(armature_name)
+            if (
+                source is None or source.as_pointer() != object_pointer
+                or armature is None or armature.as_pointer() != armature_pointer
+                or source.type != "ARMATURE" or source.data != armature
+            ):
+                return None
+            if index < len(armature.re_rigify.bones):
+                item = armature.re_rigify.bones[index]
+                if item.bone_name in armature.bones:
+                    prepare_parameter_carrier(bpy.context, source, item, index)
+        except ReferenceError:
+            remove_parameter_carrier()
     return None
 
 
@@ -195,6 +214,7 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
             refresh_rigify_types(context)
             bones_box.prop_search(item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type")
             bones_box.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
+            bones_box.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
             carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
             if carrier is not None:
                 try:
@@ -241,13 +261,11 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
         row.operator("re_rigify.import_config", text="Import", icon="IMPORT")
         row.operator("re_rigify.export_config", text="Export", icon="EXPORT")
         layout.operator("re_rigify.validate", icon="CHECKMARK")
-        layout.operator("re_rigify.generate", icon="ARMATURE_DATA")
-        drive_box = layout.box()
-        drive_box.label(text="Drive Original Armature")
-        drive_box.prop(obj, "re_rigify_generated_rig", text="Generated Rig")
-        row = drive_box.row(align=True)
-        row.operator("re_rigify.connect_drive", icon="CONSTRAINT_BONE")
-        row.operator("re_rigify.remove_drive", icon="X")
+        layout.operator("re_rigify.generate", text="Generate & Connect Rigify Rig", icon="ARMATURE_DATA")
+        if obj.re_rigify_generated_rig:
+            drive_box = layout.box()
+            drive_box.label(text=f"Driving from: {obj.re_rigify_generated_rig.name}", icon="CONSTRAINT_BONE")
+            drive_box.operator("re_rigify.remove_drive", icon="X")
         if settings.validation_message:
             box = layout.box()
             for line in settings.validation_message.splitlines():

@@ -9,7 +9,7 @@ import bpy
 from bpy.props import BoolProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from .blender_config import armature_to_payload, payload_to_armature
+from .blender_config import armature_to_payload, payload_to_armature, suspend_carrier_updates
 from .core import (
     ConfigError,
     mirror_parameter_value,
@@ -117,7 +117,7 @@ class RERIGIFY_OT_BoneRemove(bpy.types.Operator):
 class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
     bl_idname = "re_rigify.mirror_bone_config"
     bl_label = "Mirror Configuration to Opposite Side"
-    bl_description = "Copy the active Rigify type and mirrored parameters to the L/R counterpart"
+    bl_description = "Mirror checked configurations, or the active configuration if none are checked"
     bl_options = {"UNDO"}
 
     def execute(self, context):
@@ -128,34 +128,84 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
         settings = obj.data.re_rigify
         if not settings.bones:
             return {"CANCELLED"}
-        source = settings.bones[settings.active_bone_index]
         flush_parameter_carrier()
-        target_name = mirror_name(source.bone_name)
-        if target_name == source.bone_name:
-            self.report({"ERROR"}, f"{source.bone_name!r} has no L/R side suffix")
-            return {"CANCELLED"}
-        if target_name not in obj.data.bones:
-            self.report({"ERROR"}, f"Mirrored bone {target_name!r} does not exist")
-            return {"CANCELLED"}
+        selected = [item for item in settings.bones if item.collection_selected]
+        if not selected:
+            selected = [settings.bones[settings.active_bone_index]]
+        snapshots = [(item.bone_name, item.rigify_type, item.parameters_json) for item in selected]
+        source_names = {bone_name for bone_name, _rig_type, _parameters in snapshots}
+        for bone_name, _rig_type, _parameters in snapshots:
+            target_name = mirror_name(bone_name)
+            if target_name == bone_name:
+                self.report({"ERROR"}, f"{bone_name!r} has no L/R side suffix")
+                return {"CANCELLED"}
+            if target_name not in obj.data.bones:
+                self.report({"ERROR"}, f"Mirrored bone {target_name!r} does not exist")
+                return {"CANCELLED"}
+            if target_name in source_names:
+                self.report({"ERROR"}, "Do not select both sides of the same mirrored pair")
+                return {"CANCELLED"}
 
-        target_index = next(
-            (index for index, item in enumerate(settings.bones) if item.bone_name == target_name),
-            -1,
-        )
-        target = settings.bones[target_index] if target_index >= 0 else settings.bones.add()
-        if target_index < 0:
-            target_index = len(settings.bones) - 1
-        target.bone_name = target_name
-        target.rigify_type = source.rigify_type
-        target.parameters_json = json.dumps(
-            mirror_parameter_value(json.loads(source.parameters_json or "{}"), mirror_name),
-            ensure_ascii=False,
-            sort_keys=True,
-        )
         remove_parameter_carrier()
-        settings.active_bone_index = target_index
-        prepare_parameter_carrier(context, obj, target, target_index)
-        self.report({"INFO"}, f"Mirrored configuration to {target_name}")
+        last_target_index = settings.active_bone_index
+        with suspend_carrier_updates():
+            for bone_name, rig_type, parameters_json in snapshots:
+                target_name = mirror_name(bone_name)
+                target_index = next(
+                    (index for index, item in enumerate(settings.bones) if item.bone_name == target_name),
+                    -1,
+                )
+                target = settings.bones[target_index] if target_index >= 0 else settings.bones.add()
+                if target_index < 0:
+                    target_index = len(settings.bones) - 1
+                target.bone_name = target_name
+                target.rigify_type = rig_type
+                target.parameters_json = json.dumps(
+                    mirror_parameter_value(json.loads(parameters_json or "{}"), mirror_name),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+                last_target_index = target_index
+        for item in settings.bones:
+            item.collection_selected = False
+        settings.active_bone_index = last_target_index
+        target = settings.bones[last_target_index]
+        prepare_parameter_carrier(context, obj, target, last_target_index)
+        self.report({"INFO"}, f"Mirrored {len(snapshots)} configuration(s)")
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_CopyParametersToSelected(bpy.types.Operator):
+    bl_idname = "re_rigify.copy_parameters_to_selected"
+    bl_label = "Copy Parameters to Selected Same Type"
+    bl_description = "Copy the active configuration's parameters to checked bones of the same Rigify type"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        from .ui import flush_parameter_carrier, prepare_parameter_carrier, remove_parameter_carrier
+
+        obj = active_armature(context)
+        settings = obj.data.re_rigify
+        if not settings.bones:
+            return {"CANCELLED"}
+        flush_parameter_carrier()
+        source_index = settings.active_bone_index
+        source = settings.bones[source_index]
+        targets = [
+            item for index, item in enumerate(settings.bones)
+            if index != source_index and item.collection_selected and item.rigify_type == source.rigify_type
+        ]
+        if not targets:
+            self.report({"ERROR"}, "Check at least one other bone with the same Rigify type")
+            return {"CANCELLED"}
+        parameters_json = source.parameters_json
+        for target in targets:
+            target.parameters_json = parameters_json
+        for item in settings.bones:
+            item.collection_selected = False
+        remove_parameter_carrier()
+        prepare_parameter_carrier(context, obj, source, source_index)
+        self.report({"INFO"}, f"Copied parameters to {len(targets)} bone(s)")
         return {"FINISHED"}
 
 
@@ -337,27 +387,6 @@ class RERIGIFY_OT_Generate(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class RERIGIFY_OT_ConnectDrive(bpy.types.Operator):
-    bl_idname = "re_rigify.connect_drive"
-    bl_label = "Connect Generated Rig"
-    bl_description = "Drive the original armature from DEF/ORG bones on the generated Rigify rig"
-    bl_options = {"UNDO"}
-
-    def execute(self, context):
-        source = active_armature(context)
-        rig = source.re_rigify_generated_rig
-        if not rig:
-            self.report({"ERROR"}, "Choose a generated Rigify rig")
-            return {"CANCELLED"}
-        try:
-            mapped, unmatched = connect_source_to_rig(source, rig)
-        except (TypeError, ValueError) as exc:
-            self.report({"ERROR"}, str(exc))
-            return {"CANCELLED"}
-        self.report({"INFO"}, f"Connected {mapped} bones; {len(unmatched)} unmatched")
-        return {"FINISHED"}
-
-
 class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
     bl_idname = "re_rigify.remove_drive"
     bl_label = "Remove Rigify Drive"
@@ -371,12 +400,13 @@ class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
 
 
 CLASSES = (
-    RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove, RERIGIFY_OT_MirrorBoneConfig,
+    RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove,
+    RERIGIFY_OT_MirrorBoneConfig, RERIGIFY_OT_CopyParametersToSelected,
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,
     RERIGIFY_OT_MarkAllBones, RERIGIFY_OT_CollectionAddMarkedBones,
     RERIGIFY_OT_RuleAdd, RERIGIFY_OT_RuleRemove,
     RERIGIFY_OT_Validate, RERIGIFY_OT_Export, RERIGIFY_OT_Import,
-    RERIGIFY_OT_Generate, RERIGIFY_OT_ConnectDrive, RERIGIFY_OT_RemoveDrive,
+    RERIGIFY_OT_Generate, RERIGIFY_OT_RemoveDrive,
 )
 
 

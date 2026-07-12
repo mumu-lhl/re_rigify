@@ -11,14 +11,16 @@ bl_info = {
 }
 
 def register():
-    from . import blender_config, operators, ui
+    from . import blender_config, drive, operators, ui
     blender_config.register()
+    drive.register()
     operators.register()
     ui.register()
 
 
 def unregister():
-    from . import blender_config, operators, ui
+    from . import blender_config, drive, operators, ui
     ui.unregister()
     operators.unregister()
+    drive.unregister()
     blender_config.unregister()

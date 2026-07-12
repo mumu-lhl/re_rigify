@@ -15,11 +15,13 @@ Bone fields search every bone in the active armature. In Pose or Edit Mode Blend
 
 Use **Mirror Configuration to Opposite Side** after configuring one side. Rigify's native naming logic recognizes `.L/.R`, `_L/_R`, and `-L/-R`, so `Arm_L` is copied to `Arm_R`. Bone-name references nested in the parameters are mirrored too. An existing opposite-side configuration is updated.
 
+The mirror command processes every checked configuration at once; if none are checked it mirrors only the active row. Do not check both sides of the same pair. **Copy Parameters to Selected Same Type** uses the active row as the source and copies its parameters to all checked rows with the same Rigify type, which is useful for finger roots and other repeated rigs.
+
 Parameter synchronization is event-driven: it runs when switching entries, mirroring, validating, importing/exporting, generating, saving the blend file, or disabling the extension. There is no recurring polling timer.
 
-After generation, Re-Rigify automatically keeps the original mesh binding and adds local-space Copy Transforms constraints to the original armature. Local space transfers pose deltas while preserving each armature's own rest orientation. Targets are resolved in `DEF-name`, `ORG-name`, then same-name order. The drive panel can reconnect an existing generated rig or remove only constraints created by Re-Rigify.
+After generation, Re-Rigify automatically keeps the original mesh binding and adds orientation-aware local Copy Transforms constraints to the original armature. `LOCAL_OWNER_ORIENT` converts the generated bone's local pose into the original bone's own rest orientation, preserving rest shape and matching motion despite different bone axes. Targets are resolved in `DEF-name`, `ORG-name`, then same-name order. The panel shows the internally linked rig and can remove only constraints created by Re-Rigify; regenerating reconnects them automatically.
 
-The source armature keeps links to its persistent metarig and generated rig. Generating again refreshes the same metarig and uses Rigify's native target-rig regeneration path, preserving the generated rig object instead of creating numbered duplicates. Existing `<source>_metarig` and `<source>_rig` objects are also discovered by name for projects created before these links were added.
+The source armature keeps a link to its generated rig. Every generation creates a temporary metarig, assigns the existing rig as Rigify's target, updates that same rig object, and then deletes all temporary metarigs. Existing `<source>_rig` objects are discovered by name for projects created before the target link was added.
 
 Configured-bone rows use checkboxes for batch selection. Both **Add to Collection** and the collection-rule `+` add every checked bone; if none are checked they use the active list item. New collection configurations start on Rigify UI row 1; if an older configuration leaves every collection on row 0, generation promotes the first collection to row 1 on the metarig copy because Rigify requires at least one UI collection button.
 

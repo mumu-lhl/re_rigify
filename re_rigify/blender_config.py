@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 
 import bpy
 from bpy.props import (
@@ -13,7 +14,22 @@ from bpy.props import (
 from .core import FORMAT_NAME, SCHEMA_VERSION, normalize_config
 
 
+_carrier_updates_suspended = 0
+
+
+@contextmanager
+def suspend_carrier_updates():
+    global _carrier_updates_suspended
+    _carrier_updates_suspended += 1
+    try:
+        yield
+    finally:
+        _carrier_updates_suspended -= 1
+
+
 def _refresh_parameter_carrier(item, context):
+    if _carrier_updates_suspended:
+        return
     obj = getattr(context, "object", None)
     if not obj or obj.type != "ARMATURE" or obj.data != item.id_data:
         return
@@ -25,6 +41,8 @@ def _refresh_parameter_carrier(item, context):
 
 
 def _refresh_active_bone(settings, context):
+    if _carrier_updates_suspended:
+        return
     obj = getattr(context, "object", None)
     if not obj or obj.type != "ARMATURE" or obj.data != settings.id_data or not settings.bones:
         return
@@ -136,9 +154,14 @@ def register() -> None:
         name="Re-Rigify Metarig",
         type=bpy.types.Object,
     )
+    bpy.types.Object.re_rigify_source_armature = PointerProperty(
+        name="Re-Rigify Source Armature",
+        type=bpy.types.Object,
+    )
 
 
 def unregister() -> None:
+    del bpy.types.Object.re_rigify_source_armature
     del bpy.types.Object.re_rigify_metarig
     del bpy.types.Object.re_rigify_generated_rig
     del bpy.types.Armature.re_rigify

@@ -32,7 +32,12 @@ try:
     }
 
     generated = generate_rig(bpy.context, source, payload)
-    first_metarig = source.re_rigify_metarig
+    extra_metarig = source.copy()
+    extra_metarig.data = source.data.copy()
+    extra_metarig.name = "Source_metarig.999"
+    extra_metarig_name = extra_metarig.name
+    extra_metarig.re_rigify_source_armature = source
+    bpy.context.scene.collection.objects.link(extra_metarig)
     source.re_rigify_generated_rig = None
     source.re_rigify_metarig = None
     regenerated = generate_rig(bpy.context, source, payload)
@@ -41,10 +46,11 @@ try:
     assert generated.type == "ARMATURE"
     assert generated != source
     assert source.pose.bones["root"].rigify_type == ""
-    assert bpy.data.objects.get("Source_metarig") is not None
     assert regenerated == generated
     assert source.re_rigify_generated_rig == generated
-    assert source.re_rigify_metarig == first_metarig
+    assert source.re_rigify_metarig is None
+    assert extra_metarig_name not in bpy.data.objects
+    assert bpy.data.objects.get("Source_metarig") is None
 finally:
     if re_rigify.ui.HELPER_NAME in bpy.data.objects:
         re_rigify.ui.remove_parameter_carrier()
