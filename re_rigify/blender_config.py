@@ -7,7 +7,7 @@ from contextlib import contextmanager
 
 import bpy
 from bpy.props import (
-    BoolProperty, CollectionProperty, EnumProperty, IntProperty,
+    BoolProperty, CollectionProperty, EnumProperty, FloatVectorProperty, IntProperty,
     PointerProperty, StringProperty,
 )
 
@@ -75,8 +75,17 @@ class RERIGIFY_PG_CollectionConfig(bpy.types.PropertyGroup):
     ui_title: StringProperty(name="Button Title")
     ui_row: IntProperty(name="UI Row", min=0, default=0)
     row_order: IntProperty(name="Order", min=0, default=0)
+    color_set_name: StringProperty(name="Color Set")
     rules: CollectionProperty(type=RERIGIFY_PG_CollectionRule)
     active_rule_index: IntProperty(default=0)
+
+
+class RERIGIFY_PG_ColorSet(bpy.types.PropertyGroup):
+    name: StringProperty(name="Color Set")
+    active: FloatVectorProperty(name="Active", subtype="COLOR", size=3, min=0.0, max=1.0)
+    normal: FloatVectorProperty(name="Normal", subtype="COLOR", size=3, min=0.0, max=1.0)
+    select: FloatVectorProperty(name="Select", subtype="COLOR", size=3, min=0.0, max=1.0)
+    standard_colors_lock: BoolProperty(name="Standard Colors Lock", default=False)
 
 
 class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
@@ -84,6 +93,8 @@ class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
     active_bone_index: IntProperty(default=0, update=_refresh_active_bone)
     collections: CollectionProperty(type=RERIGIFY_PG_CollectionConfig)
     active_collection_index: IntProperty(default=0)
+    color_sets: CollectionProperty(type=RERIGIFY_PG_ColorSet)
+    active_color_index: IntProperty(default=0)
     validation_message: StringProperty(default="")
 
 
@@ -91,6 +102,7 @@ CLASSES = (
     RERIGIFY_PG_BoneConfig,
     RERIGIFY_PG_CollectionRule,
     RERIGIFY_PG_CollectionConfig,
+    RERIGIFY_PG_ColorSet,
     RERIGIFY_PG_ArmatureConfig,
 )
 
@@ -110,8 +122,16 @@ def armature_to_payload(armature: bpy.types.Armature) -> dict:
             "ui_title": item.ui_title,
             "ui_row": item.ui_row,
             "row_order": item.row_order,
+            "color_set": item.color_set_name,
             "rules": [{"kind": rule.kind, "pattern": rule.pattern} for rule in item.rules],
         } for item in settings.collections],
+        "color_sets": [{
+            "name": item.name,
+            "active": list(item.active),
+            "normal": list(item.normal),
+            "select": list(item.select),
+            "standard_colors_lock": item.standard_colors_lock,
+        } for item in settings.color_sets],
     }
 
 
@@ -121,6 +141,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
     settings = armature.re_rigify
     settings.bones.clear()
     settings.collections.clear()
+    settings.color_sets.clear()
     for source in payload["bones"]:
         item = settings.bones.add()
         item.bone_name = source["bone_name"]
@@ -132,14 +153,23 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
         item.ui_title = source["ui_title"]
         item.ui_row = source["ui_row"]
         item.row_order = source["row_order"]
+        item.color_set_name = source["color_set"]
         for source_rule in source["rules"]:
             rule = item.rules.add()
             rule.kind = source_rule["kind"]
             rule.pattern = source_rule["pattern"]
+    for source in payload["color_sets"]:
+        item = settings.color_sets.add()
+        item.name = source["name"]
+        item.active = source["active"]
+        item.normal = source["normal"]
+        item.select = source["select"]
+        item.standard_colors_lock = source["standard_colors_lock"]
     settings.active_bone_index = min(settings.active_bone_index, max(0, len(settings.bones) - 1))
     settings.active_collection_index = min(
         settings.active_collection_index, max(0, len(settings.collections) - 1)
     )
+    settings.active_color_index = min(settings.active_color_index, max(0, len(settings.color_sets) - 1))
 
 
 def register() -> None:

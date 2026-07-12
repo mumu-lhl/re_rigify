@@ -58,6 +58,15 @@ def prepare_parameter_carrier(context, source, item, index):
         obj.hide_set(True)
         obj["re_rigify_source"] = source_key
         context.view_layer.update()
+    from .generate import apply_collection_config
+    settings = source.data.re_rigify
+    apply_collection_config(obj, [{
+        "name": collection.name,
+        "ui_title": collection.ui_title,
+        "ui_row": collection.ui_row,
+        "row_order": collection.row_order,
+        "rules": [{"kind": rule.kind, "pattern": rule.pattern} for rule in collection.rules],
+    } for collection in settings.collections])
     pose_bone = obj.pose.bones[item.bone_name]
     key = _carrier_key(source, item, index)
     if obj.get("re_rigify_key") != key:
@@ -153,20 +162,26 @@ def remove_parameter_carrier():
 class RERIGIFY_UL_Bones(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
         layout.prop(item, "collection_selected", text="")
-        layout.label(text=item.bone_name, icon="BONE_DATA")
-        layout.label(text=item.rigify_type or "No type")
+        layout.label(text=item.bone_name, icon="BONE_DATA", translate=False)
+        layout.label(text=item.rigify_type or "No type", translate=False)
 
 
 class RERIGIFY_UL_Collections(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
-        layout.label(text=item.name or "Unnamed", icon="GROUP_BONE")
-        layout.label(text=f"Row {item.ui_row} / {item.row_order}")
+        layout.label(text=item.name or "Unnamed", icon="GROUP_BONE", translate=False)
+        layout.label(text=f"Row {item.ui_row} / {item.row_order}", translate=False)
 
 
 class RERIGIFY_UL_Rules(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
-        layout.label(text=item.kind)
-        layout.label(text=item.pattern or "Empty")
+        layout.label(text=item.kind, translate=False)
+        layout.label(text=item.pattern or "Empty", translate=False)
+
+
+class RERIGIFY_UL_ColorSets(bpy.types.UIList):
+    def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
+        layout.prop(item, "normal", text="")
+        layout.label(text=item.name or "Unnamed", translate=False)
 
 
 class RERIGIFY_PT_Main(bpy.types.Panel):
@@ -243,6 +258,9 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
             row = collection_box.row(align=True)
             row.prop(collection, "ui_row")
             row.prop(collection, "row_order")
+            collection_box.prop_search(
+                collection, "color_set_name", settings, "color_sets", text="Color Set"
+            )
             row = collection_box.row()
             row.template_list(
                 "RERIGIFY_UL_Rules", "", collection, "rules",
@@ -256,6 +274,26 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
                 row = collection_box.row(align=True)
                 row.prop(rule, "kind", text="")
                 row.prop(rule, "pattern", text="")
+
+        color_box = layout.box()
+        color_box.label(text="Rigify Color Sets")
+        row = color_box.row()
+        row.template_list(
+            "RERIGIFY_UL_ColorSets", "", settings, "color_sets",
+            settings, "active_color_index", rows=3,
+        )
+        buttons = row.column(align=True)
+        buttons.operator("re_rigify.color_set_add", text="", icon="ADD")
+        buttons.operator("re_rigify.color_set_remove", text="", icon="REMOVE")
+        color_box.operator("re_rigify.color_set_add_defaults", icon="COLOR")
+        if settings.color_sets:
+            color = settings.color_sets[settings.active_color_index]
+            color_box.prop(color, "name")
+            row = color_box.row(align=True)
+            row.prop(color, "normal")
+            row.prop(color, "select")
+            row.prop(color, "active")
+            color_box.prop(color, "standard_colors_lock")
 
         row = layout.row(align=True)
         row.operator("re_rigify.import_config", text="Import", icon="IMPORT")
@@ -272,7 +310,10 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
                 box.label(text=line, icon="INFO")
 
 
-CLASSES = (RERIGIFY_UL_Bones, RERIGIFY_UL_Collections, RERIGIFY_UL_Rules, RERIGIFY_PT_Main)
+CLASSES = (
+    RERIGIFY_UL_Bones, RERIGIFY_UL_Collections, RERIGIFY_UL_Rules,
+    RERIGIFY_UL_ColorSets, RERIGIFY_PT_Main,
+)
 
 
 def register():

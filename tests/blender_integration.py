@@ -52,8 +52,10 @@ try:
             "ui_title": "Arm Controls",
             "ui_row": 1,
             "row_order": 0,
+            "color_set": "",
             "rules": [{"kind": "GLOB", "pattern": "upper_arm.*"}],
         }],
+        "color_sets": [],
     }
     payload_to_armature(source.data, payload)
     assert armature_to_payload(source.data) == payload
@@ -109,6 +111,23 @@ try:
     carrier.rigify_parameters.relink_constraints = not carrier.rigify_parameters.relink_constraints
     flush_parameter_carrier()
     assert item.parameters_json != before
+
+    ref_item = settings.bones[1]
+    ref_item.rigify_type = "limbs.arm"
+    ref_carrier = prepare_parameter_carrier(bpy.context, source, ref_item, 1)
+    arms = ref_carrier.id_data.data.collections_all["Arms"]
+    ref_carrier.rigify_parameters.fk_layers_extra = True
+    ref_carrier.rigify_parameters.tweak_layers_extra = True
+    ref_carrier.rigify_parameters.fk_coll_refs.add().set_collection(arms)
+    ref_carrier.rigify_parameters.tweak_coll_refs.add().set_collection(arms)
+    flush_parameter_carrier()
+    saved_refs = __import__("json").loads(ref_item.parameters_json)
+    assert saved_refs["fk_coll_refs"] == ["Arms"]
+    assert saved_refs["tweak_coll_refs"] == ["Arms"]
+    re_rigify.ui.remove_parameter_carrier()
+    restored = prepare_parameter_carrier(bpy.context, source, ref_item, 1)
+    assert [ref.name for ref in restored.rigify_parameters.fk_coll_refs] == ["Arms"]
+    assert [ref.name for ref in restored.rigify_parameters.tweak_coll_refs] == ["Arms"]
 
     re_rigify.ui.remove_parameter_carrier()
     request_parameter_carrier(source, item, 0)

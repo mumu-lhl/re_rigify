@@ -12,6 +12,7 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 from .blender_config import armature_to_payload, payload_to_armature, suspend_carrier_updates
 from .core import (
     ConfigError,
+    RIGIFY_DEFAULT_COLOR_SETS,
     mirror_parameter_value,
     normalize_config,
     validate_config,
@@ -71,7 +72,7 @@ def validate_active(context):
     result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
     errors = list(result.errors)
     if not errors:
-        errors.extend(validate_bone_parameters(context, obj, payload["bones"]))
+        errors.extend(validate_bone_parameters(context, obj, payload["bones"], payload["collections"]))
     return obj, tuple(errors)
 
 
@@ -237,6 +238,66 @@ class RERIGIFY_OT_CollectionRemove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class RERIGIFY_OT_ColorSetAdd(bpy.types.Operator):
+    bl_idname = "re_rigify.color_set_add"
+    bl_label = "Add Color Set"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        settings = active_armature(context).data.re_rigify
+        item = settings.color_sets.add()
+        item.name = f"Color Set {len(settings.color_sets)}"
+        item.active = (0.55, 1.0, 1.0)
+        item.normal = (0.25, 0.25, 0.25)
+        item.select = (0.31, 0.78, 1.0)
+        settings.active_color_index = len(settings.color_sets) - 1
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_ColorSetRemove(bpy.types.Operator):
+    bl_idname = "re_rigify.color_set_remove"
+    bl_label = "Remove Color Set"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        settings = active_armature(context).data.re_rigify
+        if settings.color_sets:
+            name = settings.color_sets[settings.active_color_index].name
+            for collection in settings.collections:
+                if collection.color_set_name == name:
+                    collection.color_set_name = ""
+            settings.color_sets.remove(settings.active_color_index)
+            settings.active_color_index = min(settings.active_color_index, len(settings.color_sets) - 1)
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_ColorSetAddDefaults(bpy.types.Operator):
+    bl_idname = "re_rigify.color_set_add_defaults"
+    bl_label = "Add Rigify Default Color Sets"
+    bl_description = "Add missing default Rigify color sets without replacing existing sets"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        settings = active_armature(context).data.re_rigify
+        existing = {item.name for item in settings.color_sets}
+        added = 0
+        for name, active, normal, select in RIGIFY_DEFAULT_COLOR_SETS:
+            if name in existing:
+                continue
+            item = settings.color_sets.add()
+            item.name = name
+            item.active = active
+            item.normal = normal
+            item.select = select
+            item.standard_colors_lock = True
+            existing.add(name)
+            added += 1
+        if added:
+            settings.active_color_index = len(settings.color_sets) - 1
+        self.report({"INFO"}, f"Added {added} Rigify default color set(s)")
+        return {"FINISHED"}
+
+
 class RERIGIFY_OT_MarkAllBones(bpy.types.Operator):
     bl_idname = "re_rigify.mark_all_bones"
     bl_label = "Select All Configured Bones"
@@ -353,7 +414,7 @@ class RERIGIFY_OT_Import(bpy.types.Operator, ImportHelper):
         result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
         errors = list(result.errors)
         if not errors:
-            errors.extend(validate_bone_parameters(context, obj, payload["bones"]))
+            errors.extend(validate_bone_parameters(context, obj, payload["bones"], payload["collections"]))
         if errors:
             obj.data.re_rigify.validation_message = "\n".join(errors)
             self.report({"ERROR"}, f"Import rejected with {len(errors)} error(s)")
@@ -403,6 +464,8 @@ CLASSES = (
     RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove,
     RERIGIFY_OT_MirrorBoneConfig, RERIGIFY_OT_CopyParametersToSelected,
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,
+    RERIGIFY_OT_ColorSetAdd, RERIGIFY_OT_ColorSetRemove,
+    RERIGIFY_OT_ColorSetAddDefaults,
     RERIGIFY_OT_MarkAllBones, RERIGIFY_OT_CollectionAddMarkedBones,
     RERIGIFY_OT_RuleAdd, RERIGIFY_OT_RuleRemove,
     RERIGIFY_OT_Validate, RERIGIFY_OT_Export, RERIGIFY_OT_Import,

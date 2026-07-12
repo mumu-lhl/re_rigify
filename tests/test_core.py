@@ -89,11 +89,49 @@ class ConfigValidationTests(unittest.TestCase):
                 "ui_title": "Main",
                 "ui_row": 1,
                 "row_order": 0,
+                "color_set": "FK",
                 "rules": [{"kind": "EXACT", "pattern": "spine"}],
+            }],
+            "color_sets": [{
+                "name": "FK",
+                "active": [0.55, 1.0, 1.0],
+                "normal": [0.12, 0.57, 0.04],
+                "select": [0.31, 0.78, 1.0],
+                "standard_colors_lock": True,
             }],
         }
 
         self.assertEqual(normalize_config(payload), payload)
+
+    def test_collection_color_set_must_exist(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [],
+            "collections": [{"name": "Controls", "color_set": "Missing", "rules": []}],
+            "color_sets": [],
+        }
+
+        result = validate_config(payload, [], [])
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("unknown color set" in error for error in result.errors))
+
+    def test_duplicate_color_set_is_rejected(self):
+        color = {
+            "name": "FK", "active": [1.0, 1.0, 1.0],
+            "normal": [0.0, 0.0, 0.0], "select": [0.5, 0.5, 0.5],
+            "standard_colors_lock": False,
+        }
+        payload = {
+            "format": "re-rigify", "schema_version": 1,
+            "bones": [], "collections": [], "color_sets": [color, dict(color)],
+        }
+
+        result = validate_config(payload, [], [])
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("duplicate color set" in error for error in result.errors))
 
     def test_duplicate_row_order_is_rejected(self):
         payload = {

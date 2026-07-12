@@ -21,7 +21,9 @@ def apply_bone_config(obj: bpy.types.Object, bones: list[dict]) -> None:
             raise ConfigError("; ".join(errors))
 
 
-def validate_bone_parameters(context, source: bpy.types.Object, bones: list[dict]) -> tuple[str, ...]:
+def validate_bone_parameters(
+    context, source: bpy.types.Object, bones: list[dict], collections: list[dict] = ()
+) -> tuple[str, ...]:
     """Validate against the active Rigify RNA without touching the source armature."""
     try:
         infer_rigify_topology(
@@ -36,6 +38,7 @@ def validate_bone_parameters(context, source: bpy.types.Object, bones: list[dict
     context.scene.collection.objects.link(duplicate)
     context.view_layer.update()
     try:
+        apply_collection_config(duplicate, collections)
         apply_bone_config(duplicate, bones)
     except ConfigError as exc:
         return (str(exc),)
@@ -91,6 +94,24 @@ def apply_collection_config(obj: bpy.types.Object, collections: list[dict]) -> N
             roots.move(current_index, target_index)
 
 
+def apply_color_config(obj: bpy.types.Object, color_sets: list[dict], collections: list[dict]) -> None:
+    armature = obj.data
+    armature.rigify_colors.clear()
+    color_ids = {}
+    for index, source in enumerate(color_sets, 1):
+        color = armature.rigify_colors.add()
+        color.name = source["name"]
+        color.active = source["active"]
+        color.normal = source["normal"]
+        color.select = source["select"]
+        color.standard_colors_lock = source["standard_colors_lock"]
+        color_ids[source["name"]] = index
+    for source in collections:
+        collection = armature.collections_all.get(source["name"])
+        if collection is not None:
+            collection.rigify_color_set_id = color_ids.get(source.get("color_set", ""), 0)
+
+
 def duplicate_as_metarig(source: bpy.types.Object) -> bpy.types.Object:
     duplicate = source.copy()
     duplicate.data = source.data.copy()
@@ -141,8 +162,9 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         if context.object and context.object.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
         duplicate = prepare_metarig(source)
-        apply_bone_config(duplicate, payload["bones"])
         apply_collection_config(duplicate, payload["collections"])
+        apply_bone_config(duplicate, payload["bones"])
+        apply_color_config(duplicate, payload.get("color_sets", []), payload["collections"])
         bpy.ops.object.select_all(action="DESELECT")
         duplicate.select_set(True)
         context.view_layer.objects.active = duplicate

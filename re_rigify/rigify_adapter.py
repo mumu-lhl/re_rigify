@@ -21,13 +21,19 @@ def available_rig_types() -> tuple[str, ...]:
 
 
 def serialize_parameters(params: Any) -> dict[str, Any]:
+    from rigify.utils.layers import is_collection_ref_list_prop
+
     values: dict[str, Any] = {}
     for prop in params.bl_rna.properties:
-        if prop.identifier == "rna_type" or prop.is_readonly:
+        if prop.identifier == "rna_type" or (prop.is_readonly and prop.type != "COLLECTION"):
             continue
-        if prop.type in {"POINTER", "COLLECTION"}:
+        if prop.type == "POINTER":
             continue
         value = getattr(params, prop.identifier)
+        if prop.type == "COLLECTION":
+            if is_collection_ref_list_prop(value):
+                values[prop.identifier] = [item.name for item in value]
+            continue
         if hasattr(value, "to_list"):
             value = value.to_list()
         elif not isinstance(value, (bool, int, float, str, list, tuple)):
@@ -37,13 +43,31 @@ def serialize_parameters(params: Any) -> dict[str, Any]:
 
 
 def apply_parameters(params: Any, values: dict[str, Any]) -> list[str]:
+    from rigify.utils.layers import is_collection_ref_list_prop
+
     errors = []
     properties = params.bl_rna.properties
     for name, value in values.items():
-        if name not in properties or properties[name].is_readonly:
+        if name not in properties or (
+            properties[name].is_readonly and properties[name].type != "COLLECTION"
+        ):
             errors.append(f"unknown or read-only Rigify parameter: {name!r}")
             continue
         try:
+            prop = properties[name]
+            if prop.type == "COLLECTION":
+                refs = getattr(params, name)
+                if not is_collection_ref_list_prop(refs) or not isinstance(value, list):
+                    raise TypeError("unsupported collection parameter")
+                refs.clear()
+                for collection_name in value:
+                    if not isinstance(collection_name, str):
+                        raise TypeError("collection reference name must be a string")
+                    collection = params.id_data.data.collections_all.get(collection_name)
+                    if collection is None:
+                        raise ValueError(f"bone collection {collection_name!r} does not exist")
+                    refs.add().set_collection(collection)
+                continue
             setattr(params, name, value)
         except (AttributeError, TypeError, ValueError) as exc:
             errors.append(f"invalid Rigify parameter {name!r}: {exc}")

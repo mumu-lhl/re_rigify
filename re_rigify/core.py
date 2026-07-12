@@ -10,6 +10,15 @@ from typing import Any, Iterable
 FORMAT_NAME = "re-rigify"
 SCHEMA_VERSION = 1
 
+RIGIFY_DEFAULT_COLOR_SETS = (
+    ("Root", (0.5490, 1.0, 1.0), (0.4353, 0.1843, 0.4157), (0.3140, 0.7840, 1.0)),
+    ("IK", (0.5490, 1.0, 1.0), (0.6039, 0.0, 0.0), (0.3140, 0.7840, 1.0)),
+    ("Special", (0.5490, 1.0, 1.0), (0.9569, 0.7882, 0.0471), (0.3140, 0.7840, 1.0)),
+    ("Tweak", (0.5490, 1.0, 1.0), (0.0392, 0.2118, 0.5804), (0.3140, 0.7840, 1.0)),
+    ("FK", (0.5490, 1.0, 1.0), (0.1176, 0.5686, 0.0353), (0.3140, 0.7840, 1.0)),
+    ("Extra", (0.5490, 1.0, 1.0), (0.9686, 0.2510, 0.0941), (0.3140, 0.7840, 1.0)),
+)
+
 
 class ConfigError(ValueError):
     pass
@@ -145,8 +154,10 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
 
     bones = _require_type(payload.get("bones"), list, "bones")
     collections = _require_type(payload.get("collections"), list, "collections")
+    color_sets = _require_type(payload.get("color_sets", []), list, "color_sets")
     normalized_bones: list[dict[str, Any]] = []
     normalized_collections: list[dict[str, Any]] = []
+    normalized_color_sets: list[dict[str, Any]] = []
 
     for index, item in enumerate(bones):
         item = _require_type(item, dict, f"bones[{index}]")
@@ -165,6 +176,7 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         ui_title = _require_type(item.get("ui_title", ""), str, f"collections[{index}].ui_title")
         ui_row = _require_type(item.get("ui_row", 0), int, f"collections[{index}].ui_row")
         row_order = _require_type(item.get("row_order", 0), int, f"collections[{index}].row_order")
+        color_set = _require_type(item.get("color_set", ""), str, f"collections[{index}].color_set")
         if ui_row < 0 or row_order < 0:
             raise ConfigError(f"collections[{index}] row values must be non-negative")
         rules = _require_type(item.get("rules", []), list, f"collections[{index}].rules")
@@ -184,7 +196,29 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             "ui_title": ui_title,
             "ui_row": ui_row,
             "row_order": row_order,
+            "color_set": color_set,
             "rules": normalized_rules,
+        })
+
+    for index, item in enumerate(color_sets):
+        item = _require_type(item, dict, f"color_sets[{index}]")
+        name = _require_type(item.get("name"), str, f"color_sets[{index}].name")
+        colors = {}
+        for field in ("active", "normal", "select"):
+            value = _require_type(item.get(field), list, f"color_sets[{index}].{field}")
+            if len(value) != 3 or any(not isinstance(component, (int, float)) for component in value):
+                raise ConfigError(f"color_sets[{index}].{field} must contain three numbers")
+            if any(component < 0.0 or component > 1.0 for component in value):
+                raise ConfigError(f"color_sets[{index}].{field} values must be between 0 and 1")
+            colors[field] = [float(component) for component in value]
+        standard_colors_lock = _require_type(
+            item.get("standard_colors_lock", False), bool,
+            f"color_sets[{index}].standard_colors_lock",
+        )
+        normalized_color_sets.append({
+            "name": name,
+            **colors,
+            "standard_colors_lock": standard_colors_lock,
         })
 
     return {
@@ -192,6 +226,7 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         "schema_version": SCHEMA_VERSION,
         "bones": normalized_bones,
         "collections": normalized_collections,
+        "color_sets": normalized_color_sets,
     }
 
 
@@ -233,7 +268,16 @@ def validate_config(
     rig_types = set(available_rig_types)
     seen_bones: set[str] = set()
     seen_collections: set[str] = set()
+    seen_color_sets: set[str] = set()
     occupied_slots: set[tuple[int, int]] = set()
+
+    for item in config["color_sets"]:
+        name = item["name"]
+        if not name:
+            errors.append("color set name is empty")
+        elif name in seen_color_sets:
+            errors.append(f"duplicate color set: {name!r}")
+        seen_color_sets.add(name)
 
     for item in config["bones"]:
         name = item["bone_name"]
@@ -250,6 +294,10 @@ def validate_config(
         if name in seen_collections:
             errors.append(f"duplicate collection: {name!r}")
         seen_collections.add(name)
+        if item["color_set"] and item["color_set"] not in seen_color_sets:
+            errors.append(
+                f"collection {name!r} references unknown color set: {item['color_set']!r}"
+            )
         if item["ui_row"] > 0:
             slot = (item["ui_row"], item["row_order"])
             if slot in occupied_slots:
