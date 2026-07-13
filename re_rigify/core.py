@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
+import re
 from typing import Any, Iterable
 
 
@@ -22,6 +23,18 @@ RIGIFY_DEFAULT_COLOR_SETS = (
 
 class ConfigError(ValueError):
     pass
+
+
+def unique_blender_name(name: str, existing_names: Iterable[str]) -> str:
+    existing = set(existing_names)
+    if name not in existing:
+        return name
+    match = re.fullmatch(r"(.*?)(?:\.(\d{3}))?", name)
+    base = match.group(1) if match else name
+    index = 1
+    while f"{base}.{index:03d}" in existing:
+        index += 1
+    return f"{base}.{index:03d}"
 
 
 @dataclass(frozen=True)
@@ -51,6 +64,14 @@ def mirror_parameter_value(value: Any, name_mapper) -> Any:
     if isinstance(value, str):
         return name_mapper(value)
     return value
+
+
+def remove_collection_references(parameters: dict[str, Any], collection_name: str) -> dict[str, Any]:
+    result = dict(parameters)
+    for name, value in parameters.items():
+        if name.endswith("_coll_refs") and isinstance(value, list):
+            result[name] = [item for item in value if item != collection_name]
+    return result
 
 
 def infer_rigify_topology(
@@ -268,6 +289,7 @@ def validate_config(
     rig_types = set(available_rig_types)
     seen_bones: set[str] = set()
     seen_collections: set[str] = set()
+    managed_collection_names = {item["name"] for item in config["collections"]}
     seen_color_sets: set[str] = set()
     occupied_slots: set[tuple[int, int]] = set()
 
@@ -288,6 +310,20 @@ def validate_config(
             errors.append(f"bone does not exist: {name!r}")
         if item["rigify_type"] not in rig_types:
             errors.append(f"Rigify type is unavailable: {item['rigify_type']!r}")
+        for parameter, references in item["parameters"].items():
+            if not parameter.endswith("_coll_refs"):
+                continue
+            if not isinstance(references, list) or any(not isinstance(ref, str) for ref in references):
+                errors.append(
+                    f"bone {name!r} parameter {parameter!r} must be a list of collection names"
+                )
+                continue
+            for reference in references:
+                if reference not in managed_collection_names:
+                    errors.append(
+                        f"bone {name!r} parameter {parameter!r} references unknown managed "
+                        f"collection: {reference!r}"
+                    )
 
     for item in config["collections"]:
         name = item["name"]

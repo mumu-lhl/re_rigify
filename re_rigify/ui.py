@@ -58,8 +58,12 @@ def prepare_parameter_carrier(context, source, item, index):
         obj.hide_set(True)
         obj["re_rigify_source"] = source_key
         context.view_layer.update()
-    from .generate import apply_collection_config
     settings = source.data.re_rigify
+    managed_names = {collection.name for collection in settings.collections}
+    for collection in list(obj.data.collections_all):
+        if collection.name not in managed_names:
+            obj.data.collections.remove(collection)
+    from .generate import apply_collection_config
     apply_collection_config(obj, [{
         "name": collection.name,
         "ui_title": collection.ui_title,
@@ -252,6 +256,17 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
         buttons.operator("re_rigify.collection_add", text="", icon="ADD")
         buttons.operator("re_rigify.collection_remove", text="", icon="REMOVE")
         if settings.collections:
+            buttons.separator()
+            buttons.operator("re_rigify.collection_duplicate", text="", icon="DUPLICATE")
+            up = buttons.row(align=True)
+            up.enabled = settings.active_collection_index > 0
+            op = up.operator("re_rigify.collection_move", text="", icon="TRIA_UP")
+            op.direction = -1
+            down = buttons.row(align=True)
+            down.enabled = settings.active_collection_index < len(settings.collections) - 1
+            op = down.operator("re_rigify.collection_move", text="", icon="TRIA_DOWN")
+            op.direction = 1
+        if settings.collections:
             collection = settings.collections[settings.active_collection_index]
             collection_box.prop(collection, "name")
             collection_box.prop(collection, "ui_title")
@@ -261,6 +276,7 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
             collection_box.prop_search(
                 collection, "color_set_name", settings, "color_sets", text="Color Set"
             )
+            collection_box.operator("re_rigify.collection_add_viewport_bones", icon="BONE_DATA")
             row = collection_box.row()
             row.template_list(
                 "RERIGIFY_UL_Rules", "", collection, "rules",
@@ -274,6 +290,87 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
                 row = collection_box.row(align=True)
                 row.prop(rule, "kind", text="")
                 row.prop(rule, "pattern", text="")
+
+        if settings.collections:
+            layout_box = collection_box.box()
+            layout_box.label(text="Rigify UI Layout")
+            active_index = settings.active_collection_index
+            visible_rows = [item.ui_row for item in settings.collections if item.ui_row > 0]
+            last_row = max(visible_rows, default=0)
+            for row_id in range(1, last_row + 2):
+                row = layout_box.row(align=True)
+                row_items = sorted(
+                    (
+                        (index, item) for index, item in enumerate(settings.collections)
+                        if item.ui_row == row_id
+                    ),
+                    key=lambda pair: (pair[1].row_order, pair[1].name),
+                )
+                grid = row.grid_flow(
+                    row_major=True, columns=max(1, len(row_items)), even_columns=True,
+                )
+                if row_items:
+                    for index, item in row_items:
+                        title = item.ui_title or item.name or "Unnamed"
+                        if item.color_set_name:
+                            title = f"{title} · {item.color_set_name}"
+                        op = grid.operator(
+                            "re_rigify.collection_select", text=title,
+                            icon="COLOR" if item.color_set_name else "GROUP_BONE",
+                            depress=index == active_index,
+                            translate=False,
+                        )
+                        op.index = index
+                else:
+                    grid.label(text="Empty Row")
+                controls = row.row(align=True)
+                op = controls.operator(
+                    "re_rigify.collection_set_ui_row", text="", icon="TRIA_LEFT"
+                )
+                op.index = active_index
+                op.row = row_id
+                if row_id <= last_row:
+                    op = controls.operator(
+                        "re_rigify.collection_edit_ui_row", text="", icon="ADD"
+                    )
+                    op.row = row_id
+                    op.add = True
+                else:
+                    controls.label(text="", icon="BLANK1")
+                if (not row_items or row_id > 1) and row_id <= last_row:
+                    op = controls.operator(
+                        "re_rigify.collection_edit_ui_row", text="", icon="REMOVE"
+                    )
+                    op.row = row_id
+                    op.add = False
+                else:
+                    controls.label(text="", icon="BLANK1")
+
+            active_collection = settings.collections[active_index]
+            move = layout_box.row(align=True)
+            move.enabled = active_collection.ui_row > 0
+            op = move.operator("re_rigify.collection_move_in_row", text="Move Left", icon="TRIA_LEFT")
+            op.direction = -1
+            op = move.operator("re_rigify.collection_move_in_row", text="Move Right", icon="TRIA_RIGHT")
+            op.direction = 1
+            op = move.operator("re_rigify.collection_set_ui_row", text="Hide", icon="X")
+            op.index = active_index
+            op.row = 0
+
+            hidden = [
+                (index, item) for index, item in enumerate(settings.collections) if item.ui_row == 0
+            ]
+            if hidden:
+                hidden_box = layout_box.box()
+                hidden_box.label(text="Hidden Collections")
+                grid = hidden_box.grid_flow(row_major=True, columns=2, even_columns=True)
+                for index, item in hidden:
+                    op = grid.operator(
+                        "re_rigify.collection_select", text=item.ui_title or item.name or "Unnamed",
+                        depress=index == active_index,
+                        translate=False,
+                    )
+                    op.index = index
 
         color_box = layout.box()
         color_box.label(text="Rigify Color Sets")

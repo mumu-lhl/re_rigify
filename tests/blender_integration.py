@@ -75,6 +75,56 @@ try:
     assert not settings.bones[0].collection_selected
     assert not settings.bones[1].collection_selected
 
+    settings.bones[0].parameters_json = '{"relink_constraints": false}'
+    settings.bones[1].rigify_type = "basic.super_copy"
+    settings.bones[1].collection_selected = True
+    settings.active_bone_index = 0
+    assert bpy.ops.re_rigify.copy_parameters_to_selected() == {"FINISHED"}
+    assert settings.bones[1].rigify_type == "basic.raw_copy"
+    assert settings.bones[1].parameters_json == settings.bones[0].parameters_json
+
+    settings.active_collection_index = 0
+    bpy.context.view_layer.objects.active = source
+    bpy.ops.object.mode_set(mode="EDIT")
+    for bone in source.data.edit_bones:
+        bone.select = False
+        bone.select_head = False
+        bone.select_tail = False
+    source.data.edit_bones["upper_arm.R"].select = True
+    assert bpy.ops.re_rigify.collection_add_viewport_bones() == {"FINISHED"}
+    bpy.ops.object.mode_set(mode="OBJECT")
+    assert {
+        rule.pattern for rule in settings.collections[0].rules if rule.kind == "EXACT"
+    } == {"upper_arm.R"}
+
+    settings.active_collection_index = 0
+    assert bpy.ops.re_rigify.collection_duplicate() == {"FINISHED"}
+    copied_collection = settings.collections[1]
+    assert copied_collection.name == "Arms.001"
+    assert copied_collection.ui_title == settings.collections[0].ui_title
+    assert copied_collection.color_set_name == settings.collections[0].color_set_name
+    assert [(rule.kind, rule.pattern) for rule in copied_collection.rules] == [
+        (rule.kind, rule.pattern) for rule in settings.collections[0].rules
+    ]
+    assert copied_collection.row_order == settings.collections[0].row_order + 1
+    assert bpy.ops.re_rigify.collection_move(direction=-1) == {"FINISHED"}
+    assert settings.collections[0].name == "Arms.001"
+    assert bpy.ops.re_rigify.collection_move(direction=1) == {"FINISHED"}
+    assert settings.collections[1].name == "Arms.001"
+    assert bpy.ops.re_rigify.collection_remove() == {"FINISHED"}
+
+    second_collection = settings.collections.add()
+    second_collection.name = "Secondary"
+    second_collection.ui_row = 1
+    second_collection.row_order = 1
+    settings.active_collection_index = 1
+    assert bpy.ops.re_rigify.collection_move_in_row(direction=-1) == {"FINISHED"}
+    assert second_collection.row_order == 0
+    assert bpy.ops.re_rigify.collection_set_ui_row(index=1, row=2) == {"FINISHED"}
+    assert second_collection.ui_row == 2
+    assert bpy.ops.re_rigify.collection_edit_ui_row(row=2, add=True) == {"FINISHED"}
+    assert second_collection.ui_row == 3
+
     duplicate = source.copy()
     duplicate.data = source.data.copy()
     bpy.context.scene.collection.objects.link(duplicate)

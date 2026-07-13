@@ -6,8 +6,10 @@ from re_rigify.core import (
     infer_rigify_topology,
     normalize_config,
     mirror_parameter_value,
+    remove_collection_references,
     resolve_collection_rules,
     validate_config,
+    unique_blender_name,
 )
 
 
@@ -37,6 +39,26 @@ class ResolveCollectionRulesTests(unittest.TestCase):
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def test_unique_blender_name_increments_numeric_suffix(self):
+        names = {"Arm", "Arm.001", "Arm.003", "Leg"}
+
+        self.assertEqual(unique_blender_name("Arm", names), "Arm.002")
+        self.assertEqual(unique_blender_name("Arm.001", names), "Arm.002")
+        self.assertEqual(unique_blender_name("Hand", names), "Hand")
+
+    def test_remove_collection_references_only_changes_reference_lists(self):
+        parameters = {
+            "fk_coll_refs": ["FK", "Main"],
+            "tweak_coll_refs": ["FK"],
+            "unrelated": "FK",
+        }
+
+        result = remove_collection_references(parameters, "FK")
+
+        self.assertEqual(result, {
+            "fk_coll_refs": ["Main"], "tweak_coll_refs": [], "unrelated": "FK",
+        })
+
     def test_drive_target_prefers_def_then_org_then_same_name(self):
         self.assertEqual(
             choose_drive_target("Arm_L", {"Arm_L", "ORG-Arm_L", "DEF-Arm_L"}),
@@ -132,6 +154,22 @@ class ConfigValidationTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertTrue(any("duplicate color set" in error for error in result.errors))
+
+    def test_rigify_collection_references_must_use_managed_collections(self):
+        payload = {
+            "format": "re-rigify", "schema_version": 1,
+            "bones": [{
+                "bone_name": "arm", "rigify_type": "limbs.arm",
+                "parameters": {"fk_coll_refs": ["FK"], "tweak_coll_refs": ["Missing"]},
+            }],
+            "collections": [{"name": "FK", "rules": []}],
+            "color_sets": [],
+        }
+
+        result = validate_config(payload, ["arm"], ["limbs.arm"])
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("tweak_coll_refs" in error and "Missing" in error for error in result.errors))
 
     def test_duplicate_row_order_is_rejected(self):
         payload = {
