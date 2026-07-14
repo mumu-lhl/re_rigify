@@ -89,24 +89,67 @@ def validate_active(context):
 
 class RERIGIFY_OT_BoneAdd(bpy.types.Operator):
     bl_idname = "re_rigify.bone_add"
-    bl_label = "Add Selected Bone"
+    bl_label = "Add Selected Bones"
+    bl_description = "Add all selected Pose/Edit Mode bones, or the active bone as a fallback"
     bl_options = {"UNDO"}
 
     def execute(self, context):
+        from .ui import flush_parameter_carrier, prepare_parameter_carrier, remove_parameter_carrier
+
         obj = active_armature(context)
-        bone = obj.data.bones.active if obj else None
-        if not bone:
-            self.report({"ERROR"}, "Select an armature bone")
+        if not obj:
+            self.report({"ERROR"}, "Select an armature")
             return {"CANCELLED"}
+
+        if obj.mode == "EDIT":
+            ordered_bones = list(obj.data.edit_bones)
+            selected_names = {bone.name for bone in ordered_bones if bone.select}
+            active = obj.data.edit_bones.active
+        elif obj.mode == "POSE":
+            ordered_bones = list(obj.data.bones)
+            selected_names = {
+                bone.name for bone in (context.selected_pose_bones or ())
+                if bone.id_data == obj
+            }
+            active = context.active_pose_bone
+        else:
+            ordered_bones = list(obj.data.bones)
+            selected_names = set()
+            active = obj.data.bones.active
+
+        if not selected_names and active is not None:
+            selected_names = {active.name}
+        selected = [bone.name for bone in ordered_bones if bone.name in selected_names]
+        if not selected:
+            self.report({"ERROR"}, "Select one or more armature bones")
+            return {"CANCELLED"}
+
         settings = obj.data.re_rigify
-        if any(item.bone_name == bone.name for item in settings.bones):
-            self.report({"ERROR"}, "The active bone is already configured")
-            return {"CANCELLED"}
-        item = settings.bones.add()
-        item.bone_name = bone.name
+        existing_indices = {
+            item.bone_name: index for index, item in enumerate(settings.bones)
+        }
         types = available_rig_types()
-        item.rigify_type = "basic.raw_copy" if "basic.raw_copy" in types else (types[0] if types else "")
-        settings.active_bone_index = len(settings.bones) - 1
+        default_type = "basic.raw_copy" if "basic.raw_copy" in types else (types[0] if types else "")
+        flush_parameter_carrier()
+        remove_parameter_carrier()
+        added_indices = []
+        with suspend_carrier_updates():
+            for bone_name in selected:
+                if bone_name in existing_indices:
+                    continue
+                item = settings.bones.add()
+                item.bone_name = bone_name
+                item.rigify_type = default_type
+                index = len(settings.bones) - 1
+                existing_indices[bone_name] = index
+                added_indices.append(index)
+
+        active_name = active.name if active is not None and active.name in selected_names else selected[-1]
+        settings.active_bone_index = existing_indices[active_name]
+        active_item = settings.bones[settings.active_bone_index]
+        prepare_parameter_carrier(context, obj, active_item, settings.active_bone_index)
+        skipped = len(selected) - len(added_indices)
+        self.report({"INFO"}, f"Added {len(added_indices)} bone(s); skipped {skipped} existing")
         return {"FINISHED"}
 
 

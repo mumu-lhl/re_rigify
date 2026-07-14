@@ -21,5 +21,66 @@ class UIListTranslationTests(unittest.TestCase):
         self.assertEqual(missing, [], f"UIList labels missing translate=False: {missing}")
 
 
+class PanelStructureTests(unittest.TestCase):
+    def test_workflow_uses_nested_panels(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        classes = {
+            node.name: node for node in tree.body if isinstance(node, ast.ClassDef)
+        }
+        expected_parents = {
+            "RERIGIFY_PT_Bones": "RERIGIFY_PT_main",
+            "RERIGIFY_PT_BoneParameters": "RERIGIFY_PT_bones",
+            "RERIGIFY_PT_Collections": "RERIGIFY_PT_main",
+            "RERIGIFY_PT_CollectionRules": "RERIGIFY_PT_collections",
+            "RERIGIFY_PT_Layout": "RERIGIFY_PT_main",
+            "RERIGIFY_PT_Colors": "RERIGIFY_PT_main",
+            "RERIGIFY_PT_Configuration": "RERIGIFY_PT_main",
+        }
+        for class_name, parent_id in expected_parents.items():
+            self.assertIn(class_name, classes)
+            assignments = {
+                statement.targets[0].id: statement.value.value
+                for statement in classes[class_name].body
+                if isinstance(statement, ast.Assign)
+                and len(statement.targets) == 1
+                and isinstance(statement.targets[0], ast.Name)
+                and isinstance(statement.value, ast.Constant)
+                for target in statement.targets
+            }
+            self.assertEqual(assignments.get("bl_parent_id"), parent_id)
+
+    def test_secondary_panels_default_closed(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        default_closed = {
+            "RERIGIFY_PT_BoneParameters",
+            "RERIGIFY_PT_CollectionRules",
+            "RERIGIFY_PT_Layout",
+            "RERIGIFY_PT_Colors",
+            "RERIGIFY_PT_Configuration",
+        }
+        found = set()
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef) or node.name not in default_closed:
+                continue
+            found.add(node.name)
+            options = next(
+                (
+                    statement.value
+                    for statement in node.body
+                    if isinstance(statement, ast.Assign)
+                    and any(
+                        isinstance(target, ast.Name) and target.id == "bl_options"
+                        for target in statement.targets
+                    )
+                ),
+                None,
+            )
+            self.assertIsInstance(options, ast.Set)
+            self.assertIn("DEFAULT_CLOSED", {item.value for item in options.elts})
+        self.assertEqual(found, default_closed)
+
+
 if __name__ == "__main__":
     unittest.main()

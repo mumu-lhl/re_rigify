@@ -188,9 +188,7 @@ class RERIGIFY_UL_ColorSets(bpy.types.UIList):
         layout.label(text=item.name or "Unnamed", translate=False)
 
 
-class RERIGIFY_PT_Main(bpy.types.Panel):
-    bl_label = "Re-Rigify"
-    bl_idname = "RERIGIFY_PT_main"
+class _RERIGIFY_PT_Base:
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Re-Rigify"
@@ -199,55 +197,104 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
     def poll(cls, context):
         return context.object and context.object.type == "ARMATURE"
 
+
+class RERIGIFY_PT_Main(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Re-Rigify"
+    bl_idname = "RERIGIFY_PT_main"
+
     def draw(self, context):
         layout = self.layout
         obj = context.object
         settings = obj.data.re_rigify
 
-        bones_box = layout.box()
-        bones_box.label(text="Rigify Bone Types")
-        row = bones_box.row()
+        summary = layout.row(align=True)
+        summary.label(text=f"{len(settings.bones)} Bones", icon="BONE_DATA", translate=False)
+        summary.label(
+            text=f"{len(settings.collections)} Collections", icon="GROUP_BONE", translate=False,
+        )
+        layout.operator(
+            "re_rigify.generate", text="Generate & Connect Rigify Rig", icon="ARMATURE_DATA"
+        )
+        if obj.re_rigify_generated_rig:
+            row = layout.row(align=True)
+            row.label(
+                text=f"Driven by {obj.re_rigify_generated_rig.name}",
+                icon="CONSTRAINT_BONE",
+                translate=False,
+            )
+            row.operator("re_rigify.remove_drive", text="", icon="X")
+
+
+class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Bone Setup"
+    bl_idname = "RERIGIFY_PT_bones"
+    bl_parent_id = "RERIGIFY_PT_main"
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.object
+        settings = obj.data.re_rigify
+
+        row = layout.row()
         row.template_list("RERIGIFY_UL_Bones", "", settings, "bones", settings, "active_bone_index", rows=4)
         buttons = row.column(align=True)
         buttons.operator("re_rigify.bone_add", text="", icon="ADD")
         buttons.operator("re_rigify.bone_remove", text="", icon="REMOVE")
-        row = bones_box.row(align=True)
+        row = layout.row(align=True)
         op = row.operator("re_rigify.mark_all_bones", text="All")
         op.selected = True
         op = row.operator("re_rigify.mark_all_bones", text="None")
         op.selected = False
-        if settings.collections:
-            target = settings.collections[settings.active_collection_index].name or "Unnamed"
-            bones_box.operator(
-                "re_rigify.collection_add_marked_bones",
-                text=f"Add to Collection: {target}",
-                icon="GROUP_BONE",
-            )
-        else:
-            row = bones_box.row()
-            row.enabled = False
-            row.operator("re_rigify.collection_add_marked_bones", text="Create a Collection First")
         if settings.bones:
             item = settings.bones[settings.active_bone_index]
-            bones_box.prop_search(item, "bone_name", obj.data, "bones", text="Bone")
+            layout.use_property_split = True
+            layout.use_property_decorate = False
+            layout.prop_search(item, "bone_name", obj.data, "bones", text="Bone")
             refresh_rigify_types(context)
-            bones_box.prop_search(item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type")
-            bones_box.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
-            bones_box.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
-            carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
-            if carrier is not None:
-                try:
-                    draw_parameters(bones_box.column(), carrier)
-                    bones_box.label(text="Parameters save automatically", icon="CHECKMARK")
-                except Exception as exc:
-                    bones_box.label(text=f"Parameter UI unavailable: {exc}", icon="ERROR")
-            else:
-                request_parameter_carrier(obj, item, settings.active_bone_index)
-                bones_box.label(text="Loading Rigify parameters…", icon="TIME")
+            layout.prop_search(
+                item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type"
+            )
+            actions = layout.row(align=True)
+            actions.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
+            actions.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
 
-        collection_box = layout.box()
-        collection_box.label(text="Bone Collections and Rig UI")
-        row = collection_box.row()
+
+class RERIGIFY_PT_BoneParameters(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Active Bone Parameters"
+    bl_idname = "RERIGIFY_PT_bone_parameters"
+    bl_parent_id = "RERIGIFY_PT_bones"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.object
+        settings = obj.data.re_rigify
+        if not settings.bones:
+            layout.label(text="No configured bone", icon="INFO")
+            return
+        item = settings.bones[settings.active_bone_index]
+        carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
+        if carrier is not None:
+            try:
+                draw_parameters(layout.column(), carrier)
+                layout.label(text="Parameters save automatically", icon="CHECKMARK")
+            except Exception as exc:
+                layout.label(text=f"Parameter UI unavailable: {exc}", icon="ERROR")
+        else:
+            request_parameter_carrier(obj, item, settings.active_bone_index)
+            layout.label(text="Loading Rigify parameters…", icon="TIME")
+
+
+class RERIGIFY_PT_Collections(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Bone Collections"
+    bl_idname = "RERIGIFY_PT_collections"
+    bl_parent_id = "RERIGIFY_PT_main"
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.object.data.re_rigify
+
+        row = layout.row()
         row.template_list(
             "RERIGIFY_UL_Collections", "", settings, "collections",
             settings, "active_collection_index", rows=3,
@@ -268,113 +315,159 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
             op.direction = 1
         if settings.collections:
             collection = settings.collections[settings.active_collection_index]
-            collection_box.prop(collection, "name")
-            collection_box.prop(collection, "ui_title")
-            row = collection_box.row(align=True)
-            row.prop(collection, "ui_row")
-            row.prop(collection, "row_order")
-            collection_box.prop_search(
+            layout.use_property_split = True
+            layout.use_property_decorate = False
+            layout.prop(collection, "name")
+            layout.prop(collection, "ui_title")
+            layout.prop_search(
                 collection, "color_set_name", settings, "color_sets", text="Color Set"
             )
-            collection_box.operator("re_rigify.collection_add_viewport_bones", icon="BONE_DATA")
-            row = collection_box.row()
-            row.template_list(
-                "RERIGIFY_UL_Rules", "", collection, "rules",
-                collection, "active_rule_index", rows=3,
+            membership = layout.row(align=True)
+            membership.operator(
+                "re_rigify.collection_add_viewport_bones",
+                text="Add Viewport Selection",
+                icon="BONE_DATA",
             )
-            buttons = row.column(align=True)
-            buttons.operator("re_rigify.rule_add", text="", icon="ADD")
-            buttons.operator("re_rigify.rule_remove", text="", icon="REMOVE")
-            if collection.rules:
-                rule = collection.rules[collection.active_rule_index]
-                row = collection_box.row(align=True)
-                row.prop(rule, "kind", text="")
-                row.prop(rule, "pattern", text="")
+            membership.operator(
+                "re_rigify.collection_add_marked_bones",
+                text="Add Checked Configs",
+                icon="CHECKBOX_HLT",
+            )
 
-        if settings.collections:
-            layout_box = collection_box.box()
-            layout_box.label(text="Rigify UI Layout")
-            active_index = settings.active_collection_index
-            visible_rows = [item.ui_row for item in settings.collections if item.ui_row > 0]
-            last_row = max(visible_rows, default=0)
-            for row_id in range(1, last_row + 2):
-                row = layout_box.row(align=True)
-                row_items = sorted(
-                    (
-                        (index, item) for index, item in enumerate(settings.collections)
-                        if item.ui_row == row_id
-                    ),
-                    key=lambda pair: (pair[1].row_order, pair[1].name),
-                )
-                grid = row.grid_flow(
-                    row_major=True, columns=max(1, len(row_items)), even_columns=True,
-                )
-                if row_items:
-                    for index, item in row_items:
-                        title = item.ui_title or item.name or "Unnamed"
-                        if item.color_set_name:
-                            title = f"{title} · {item.color_set_name}"
-                        op = grid.operator(
-                            "re_rigify.collection_select", text=title,
-                            icon="COLOR" if item.color_set_name else "GROUP_BONE",
-                            depress=index == active_index,
-                            translate=False,
-                        )
-                        op.index = index
-                else:
-                    grid.label(text="Empty Row")
-                controls = row.row(align=True)
-                op = controls.operator(
-                    "re_rigify.collection_set_ui_row", text="", icon="TRIA_LEFT"
-                )
-                op.index = active_index
-                op.row = row_id
-                if row_id <= last_row:
-                    op = controls.operator(
-                        "re_rigify.collection_edit_ui_row", text="", icon="ADD"
-                    )
-                    op.row = row_id
-                    op.add = True
-                else:
-                    controls.label(text="", icon="BLANK1")
-                if (not row_items or row_id > 1) and row_id <= last_row:
-                    op = controls.operator(
-                        "re_rigify.collection_edit_ui_row", text="", icon="REMOVE"
-                    )
-                    op.row = row_id
-                    op.add = False
-                else:
-                    controls.label(text="", icon="BLANK1")
 
-            active_collection = settings.collections[active_index]
-            move = layout_box.row(align=True)
-            move.enabled = active_collection.ui_row > 0
-            op = move.operator("re_rigify.collection_move_in_row", text="Move Left", icon="TRIA_LEFT")
-            op.direction = -1
-            op = move.operator("re_rigify.collection_move_in_row", text="Move Right", icon="TRIA_RIGHT")
-            op.direction = 1
-            op = move.operator("re_rigify.collection_set_ui_row", text="Hide", icon="X")
-            op.index = active_index
-            op.row = 0
+class RERIGIFY_PT_CollectionRules(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Collection Rules"
+    bl_idname = "RERIGIFY_PT_collection_rules"
+    bl_parent_id = "RERIGIFY_PT_collections"
+    bl_options = {"DEFAULT_CLOSED"}
 
-            hidden = [
-                (index, item) for index, item in enumerate(settings.collections) if item.ui_row == 0
-            ]
-            if hidden:
-                hidden_box = layout_box.box()
-                hidden_box.label(text="Hidden Collections")
-                grid = hidden_box.grid_flow(row_major=True, columns=2, even_columns=True)
-                for index, item in hidden:
+    def draw(self, context):
+        layout = self.layout
+        settings = context.object.data.re_rigify
+        if not settings.collections:
+            layout.label(text="No collection", icon="INFO")
+            return
+        collection = settings.collections[settings.active_collection_index]
+        row = layout.row()
+        row.template_list(
+            "RERIGIFY_UL_Rules", "", collection, "rules",
+            collection, "active_rule_index", rows=4,
+        )
+        buttons = row.column(align=True)
+        buttons.operator("re_rigify.rule_add", text="", icon="ADD")
+        buttons.operator("re_rigify.rule_remove", text="", icon="REMOVE")
+        if collection.rules:
+            rule = collection.rules[collection.active_rule_index]
+            row = layout.row(align=True)
+            row.prop(rule, "kind", text="")
+            row.prop(rule, "pattern", text="")
+
+
+class RERIGIFY_PT_Layout(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Rig UI Layout"
+    bl_idname = "RERIGIFY_PT_layout"
+    bl_parent_id = "RERIGIFY_PT_main"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.object.data.re_rigify
+        if not settings.collections:
+            layout.label(text="No collection", icon="INFO")
+            return
+        active_index = settings.active_collection_index
+        active_collection = settings.collections[active_index]
+        layout.use_property_split = True
+        layout.use_property_decorate = False
+        layout.prop(active_collection, "ui_row", text="Active Row")
+        layout.prop(active_collection, "row_order", text="Order in Row")
+        visible_rows = [item.ui_row for item in settings.collections if item.ui_row > 0]
+        last_row = max(visible_rows, default=0)
+        for row_id in range(1, last_row + 2):
+            row = layout.row(align=True)
+            row_items = sorted(
+                (
+                    (index, item) for index, item in enumerate(settings.collections)
+                    if item.ui_row == row_id
+                ),
+                key=lambda pair: (pair[1].row_order, pair[1].name),
+            )
+            grid = row.grid_flow(
+                row_major=True, columns=max(1, len(row_items)), even_columns=True,
+            )
+            if row_items:
+                for index, item in row_items:
+                    title = item.ui_title or item.name or "Unnamed"
+                    if item.color_set_name:
+                        title = f"{title} · {item.color_set_name}"
                     op = grid.operator(
-                        "re_rigify.collection_select", text=item.ui_title or item.name or "Unnamed",
+                        "re_rigify.collection_select", text=title,
+                        icon="COLOR" if item.color_set_name else "GROUP_BONE",
                         depress=index == active_index,
                         translate=False,
                     )
                     op.index = index
+            else:
+                grid.label(text="Empty Row")
+            controls = row.row(align=True)
+            op = controls.operator(
+                "re_rigify.collection_set_ui_row", text="", icon="TRIA_LEFT"
+            )
+            op.index = active_index
+            op.row = row_id
+            if row_id <= last_row:
+                op = controls.operator(
+                    "re_rigify.collection_edit_ui_row", text="", icon="ADD"
+                )
+                op.row = row_id
+                op.add = True
+            else:
+                controls.label(text="", icon="BLANK1")
+            if (not row_items or row_id > 1) and row_id <= last_row:
+                op = controls.operator(
+                    "re_rigify.collection_edit_ui_row", text="", icon="REMOVE"
+                )
+                op.row = row_id
+                op.add = False
+            else:
+                controls.label(text="", icon="BLANK1")
 
-        color_box = layout.box()
-        color_box.label(text="Rigify Color Sets")
-        row = color_box.row()
+        move = layout.row(align=True)
+        move.enabled = active_collection.ui_row > 0
+        op = move.operator("re_rigify.collection_move_in_row", text="Move Left", icon="TRIA_LEFT")
+        op.direction = -1
+        op = move.operator("re_rigify.collection_move_in_row", text="Move Right", icon="TRIA_RIGHT")
+        op.direction = 1
+        op = move.operator("re_rigify.collection_set_ui_row", text="Hide", icon="X")
+        op.index = active_index
+        op.row = 0
+
+        hidden = [
+            (index, item) for index, item in enumerate(settings.collections) if item.ui_row == 0
+        ]
+        if hidden:
+            box = layout.box()
+            box.label(text="Hidden Collections")
+            grid = box.grid_flow(row_major=True, columns=2, even_columns=True)
+            for index, item in hidden:
+                op = grid.operator(
+                    "re_rigify.collection_select", text=item.ui_title or item.name or "Unnamed",
+                    depress=index == active_index,
+                    translate=False,
+                )
+                op.index = index
+
+
+class RERIGIFY_PT_Colors(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Color Sets"
+    bl_idname = "RERIGIFY_PT_colors"
+    bl_parent_id = "RERIGIFY_PT_main"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.object.data.re_rigify
+        row = layout.row()
         row.template_list(
             "RERIGIFY_UL_ColorSets", "", settings, "color_sets",
             settings, "active_color_index", rows=3,
@@ -382,25 +475,33 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
         buttons = row.column(align=True)
         buttons.operator("re_rigify.color_set_add", text="", icon="ADD")
         buttons.operator("re_rigify.color_set_remove", text="", icon="REMOVE")
-        color_box.operator("re_rigify.color_set_add_defaults", icon="COLOR")
+        layout.operator("re_rigify.color_set_add_defaults", icon="COLOR")
         if settings.color_sets:
             color = settings.color_sets[settings.active_color_index]
-            color_box.prop(color, "name")
-            row = color_box.row(align=True)
+            layout.use_property_split = True
+            layout.use_property_decorate = False
+            layout.prop(color, "name")
+            row = layout.row(align=True)
             row.prop(color, "normal")
             row.prop(color, "select")
             row.prop(color, "active")
-            color_box.prop(color, "standard_colors_lock")
+            layout.prop(color, "standard_colors_lock")
+
+
+class RERIGIFY_PT_Configuration(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Configuration"
+    bl_idname = "RERIGIFY_PT_configuration"
+    bl_parent_id = "RERIGIFY_PT_main"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.object.data.re_rigify
 
         row = layout.row(align=True)
         row.operator("re_rigify.import_config", text="Import", icon="IMPORT")
         row.operator("re_rigify.export_config", text="Export", icon="EXPORT")
         layout.operator("re_rigify.validate", icon="CHECKMARK")
-        layout.operator("re_rigify.generate", text="Generate & Connect Rigify Rig", icon="ARMATURE_DATA")
-        if obj.re_rigify_generated_rig:
-            drive_box = layout.box()
-            drive_box.label(text=f"Driving from: {obj.re_rigify_generated_rig.name}", icon="CONSTRAINT_BONE")
-            drive_box.operator("re_rigify.remove_drive", icon="X")
         if settings.validation_message:
             box = layout.box()
             for line in settings.validation_message.splitlines():
@@ -409,7 +510,11 @@ class RERIGIFY_PT_Main(bpy.types.Panel):
 
 CLASSES = (
     RERIGIFY_UL_Bones, RERIGIFY_UL_Collections, RERIGIFY_UL_Rules,
-    RERIGIFY_UL_ColorSets, RERIGIFY_PT_Main,
+    RERIGIFY_UL_ColorSets,
+    RERIGIFY_PT_Main,
+    RERIGIFY_PT_Bones, RERIGIFY_PT_BoneParameters,
+    RERIGIFY_PT_Collections, RERIGIFY_PT_CollectionRules,
+    RERIGIFY_PT_Layout, RERIGIFY_PT_Colors, RERIGIFY_PT_Configuration,
 )
 
 
