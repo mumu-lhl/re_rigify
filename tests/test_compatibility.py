@@ -6,6 +6,7 @@ from re_rigify.compatibility import (
     build_compatibility_plan,
     plan_connected_chain,
     plan_eye_landmarks,
+    resolve_compatibility_drive_map,
     validate_compatibility,
 )
 from re_rigify.core import ConfigError, DEFAULT_COMPATIBILITY
@@ -144,6 +145,21 @@ class EyePlanningTests(unittest.TestCase):
         )
 
         self.assertEqual(plan.forward_axis, (1.0, 0.0, 0.0))
+
+    def test_eye_drive_map_targets_generated_deform_bone(self):
+        eye_plan = plan_eye_landmarks(
+            "Eye_L", (0.0, 0.0, 0.0), 1.0,
+            self.upper, self.lower, "-Y",
+        )
+
+        result = resolve_compatibility_drive_map(
+            {"Eye_up_01_L": "RR-lid01.T.L"},
+            [eye_plan],
+            {"ORG-Eye_L", "DEF-Eye_L", "ORG-RR-lid01.T.L"},
+        )
+
+        self.assertEqual(result["Eye_L"], "DEF-Eye_L")
+        self.assertEqual(result["Eye_up_01_L"], "ORG-RR-lid01.T.L")
 
     def test_too_few_real_landmarks_is_rejected(self):
         with self.assertRaisesRegex(ConfigError, "upper eyelid.*at least 2"):

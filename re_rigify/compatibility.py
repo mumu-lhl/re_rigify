@@ -5,8 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from fnmatch import fnmatchcase
 import re
+from typing import Iterable
 
-from .core import ConfigError, unique_child_chain
+from .core import ConfigError, choose_drive_target, unique_child_chain
 
 
 CHAIN_MIN_LENGTHS = {
@@ -45,6 +46,24 @@ class EyePlan:
     forward_axis: Point
     upper: list[EyeSegment]
     lower: list[EyeSegment]
+
+
+def resolve_compatibility_drive_map(
+    source_to_helper: dict[str, str],
+    eye_plans: list[EyePlan],
+    target_bone_names: Iterable[str],
+) -> dict[str, str]:
+    target_names = set(target_bone_names)
+    result = {
+        source_name: target_name
+        for source_name, helper_name in source_to_helper.items()
+        if (target_name := choose_drive_target(helper_name, target_names)) is not None
+    }
+    for eye_plan in eye_plans:
+        deform_name = f"DEF-{eye_plan.eye_name}"
+        if deform_name in target_names:
+            result[eye_plan.eye_name] = deform_name
+    return result
 
 
 @dataclass(frozen=True)

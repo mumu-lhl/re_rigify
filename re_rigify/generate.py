@@ -12,6 +12,7 @@ from .compatibility import (
     apply_connection_operations,
     apply_roll_helpers,
     build_compatibility_plan,
+    resolve_compatibility_drive_map,
 )
 from .drive import DRIVE_MAP_PROPERTY, ROTATION_DRIVE_MAP_PROPERTY
 from .rigify_adapter import apply_parameters
@@ -186,13 +187,11 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         rotation_drive_map = apply_roll_helpers(
             context, source, result_obj, compatibility_plan.roll_plans,
         )
-        target_names = set(result_obj.pose.bones.keys())
-        from .core import choose_drive_target
-        explicit_drive_map = {
-            source_name: target_name
-            for source_name, helper_name in source_to_helper.items()
-            if (target_name := choose_drive_target(helper_name, target_names)) is not None
-        }
+        explicit_drive_map = resolve_compatibility_drive_map(
+            source_to_helper,
+            compatibility_plan.eye_plans,
+            result_obj.pose.bones.keys(),
+        )
         result_obj[DRIVE_MAP_PROPERTY] = json.dumps(
             explicit_drive_map, ensure_ascii=False, sort_keys=True,
         )
