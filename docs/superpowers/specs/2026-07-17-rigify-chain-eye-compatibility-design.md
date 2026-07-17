@@ -88,12 +88,19 @@ they exist only to let Rigify construct the Skin Eye controls.
 
 ## Generated-to-source drive mapping
 
-The current name-based mapping remains the default. Eye adaptation adds an
-explicit mapping for temporary eyelid segment names:
+The current name-based mapping remains the default. Eye adaptation adds
+explicit mappings for the eye deform bone and temporary eyelid segment names:
 
 ```
+source eye bone -> generated DEF eye bone
 source eyelid bone -> generated DEF temporary-segment bone
 ```
+
+This eye mapping is necessary because Rigify aims the generated `DEF` eye
+through its target control, while the same-named `ORG` eye only follows the
+eye-master parent. Changing the global `ORG`/`DEF` preference would affect
+unrelated rig types, so the override is scoped to configured `face.skin_eye`
+plans.
 
 The mapping is stored on the generated rig as Re-Rigify metadata so it survives
 metarig cleanup and can be reused when updating an existing generated rig.
@@ -146,6 +153,8 @@ verify:
 - `Thumb_01_R` generates as a three-bone `limbs.super_finger` chain.
 - Both `Eye_L` and `Eye_R` generate as `face.skin_eye`.
 - Generated eyelid controls affect generated deform bones.
+- Generated `Eye_common`, `Eye_L`, and `Eye_R` controls drive the corresponding
+  source eye bones through generated `DEF-Eye_L` and `DEF-Eye_R`.
 - Re-Rigify constraints transfer those transforms to the matching
   `Eye_up_*` and `Eye_bottom_*` source bones.
 - Regeneration preserves the explicit eyelid mapping.
