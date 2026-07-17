@@ -4,8 +4,27 @@ from re_rigify.compatibility import (
     EyeLandmark,
     plan_connected_chain,
     plan_eye_landmarks,
+    validate_compatibility,
 )
-from re_rigify.core import ConfigError
+from re_rigify.core import ConfigError, DEFAULT_COMPATIBILITY
+
+
+class FakeBone:
+    def __init__(self, name, parent=None, head=(0.0, 0.0, 0.0), length=1.0):
+        self.name = name
+        self.parent = parent
+        self.head_local = head
+        self.length = length
+
+
+class FakeBones(list):
+    def get(self, name):
+        return next((bone for bone in self if bone.name == name), None)
+
+
+class FakeObject:
+    def __init__(self, bones):
+        self.data = type("Data", (), {"bones": FakeBones(bones)})()
 
 
 class ConnectedChainPlanningTests(unittest.TestCase):
@@ -111,6 +130,53 @@ class EyePlanningTests(unittest.TestCase):
                 "Eye_L", (0.0, 0.0, 0.0), 1.0,
                 centered_upper, centered_lower, "AUTO",
             )
+
+
+class CompatibilityValidationTests(unittest.TestCase):
+    def test_reports_ambiguous_forced_chain_with_bone_context(self):
+        root = FakeBone("Thumb_01_R")
+        obj = FakeObject([
+            root,
+            FakeBone("Thumb_02_R", root),
+            FakeBone("Thumb_alt_R", root),
+        ])
+        config = {
+            "bone_name": root.name,
+            "rigify_type": "limbs.super_finger",
+            "compatibility": {**DEFAULT_COMPATIBILITY, "force_connect_chain": True},
+        }
+
+        errors = validate_compatibility(obj, [config])
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Bone 'Thumb_01_R'", errors[0])
+        self.assertIn("ambiguous", errors[0])
+
+    def test_reports_missing_real_eyelid_pattern_matches(self):
+        eye = FakeBone("Eye_L", head=(0.0, 0.0, 0.0))
+        obj = FakeObject([
+            eye,
+            FakeBone("Eye_up_01_L", head=(-1.0, -0.2, 1.0)),
+            FakeBone("Eye_bottom_01_L", head=(-1.0, -0.2, -1.0)),
+            FakeBone("Eye_bottom_02_L", head=(1.0, -0.2, -1.0)),
+        ])
+        config = {
+            "bone_name": eye.name,
+            "rigify_type": "face.skin_eye",
+            "compatibility": {
+                **DEFAULT_COMPATIBILITY,
+                "skin_eye_compatibility": True,
+                "eye_forward_axis": "-Y",
+                "upper_lid_pattern": "Eye_up_*_L",
+                "lower_lid_pattern": "Eye_bottom_*_L",
+            },
+        }
+
+        errors = validate_compatibility(obj, [config])
+
+        self.assertEqual(len(errors), 1)
+        self.assertIn("upper eyelid pattern", errors[0])
+        self.assertIn("Eye_up_*_L", errors[0])
 
 
 if __name__ == "__main__":

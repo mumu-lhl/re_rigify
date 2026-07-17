@@ -262,7 +262,8 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
                 compatibility.label(text="Compatibility")
                 compatibility.use_property_split = True
                 compatibility.use_property_decorate = False
-                compatibility.prop(item, "force_connect_chain")
+                if item.rigify_type == "limbs.super_finger":
+                    compatibility.prop(item, "force_connect_chain")
                 if item.rigify_type == "face.skin_eye":
                     compatibility.prop(item, "skin_eye_compatibility")
                     if item.skin_eye_compatibility:

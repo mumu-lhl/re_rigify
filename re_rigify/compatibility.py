@@ -220,6 +220,14 @@ def build_compatibility_plan(obj, bone_configs: list[dict]) -> CompatibilityPlan
                 for bone in obj.data.bones
                 if lower_pattern and fnmatchcase(bone.name, lower_pattern)
             ]
+            if len(upper) < 2 and not compatibility.get("synthetic_lids_fallback", False):
+                raise ConfigError(
+                    f"upper eyelid pattern {upper_pattern!r} matched fewer than 2 bones"
+                )
+            if len(lower) < 2 and not compatibility.get("synthetic_lids_fallback", False):
+                raise ConfigError(
+                    f"lower eyelid pattern {lower_pattern!r} matched fewer than 2 bones"
+                )
             plan.eye_plans.append(plan_eye_landmarks(
                 eye_bone.name,
                 tuple(eye_bone.head_local),
@@ -230,6 +238,32 @@ def build_compatibility_plan(obj, bone_configs: list[dict]) -> CompatibilityPlan
                 synthetic_fallback=compatibility.get("synthetic_lids_fallback", False),
             ))
     return plan
+
+
+def validate_compatibility(obj, bone_configs: list[dict]) -> tuple[str, ...]:
+    errors: list[str] = []
+    claimed_eyelids: dict[str, str] = {}
+    for config in bone_configs:
+        bone_name = config["bone_name"]
+        try:
+            plan = build_compatibility_plan(obj, [config])
+        except ConfigError as exc:
+            errors.append(f"Bone {bone_name!r}: {exc}")
+            continue
+        for eye_plan in plan.eye_plans:
+            for segment in eye_plan.upper + eye_plan.lower:
+                source_name = segment.source_name
+                if not source_name:
+                    continue
+                previous = claimed_eyelids.get(source_name)
+                if previous is not None:
+                    errors.append(
+                        f"Bone {bone_name!r}: eyelid bone {source_name!r} "
+                        f"is already claimed by {previous!r}"
+                    )
+                else:
+                    claimed_eyelids[source_name] = bone_name
+    return tuple(errors)
 
 
 def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:

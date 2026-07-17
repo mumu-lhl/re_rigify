@@ -11,7 +11,11 @@ from re_rigify.compatibility import apply_compatibility_plan, build_compatibilit
 from re_rigify.core import DEFAULT_COMPATIBILITY
 from re_rigify.generate import apply_collection_config, validate_bone_parameters
 from re_rigify.operators import select_only
-from re_rigify.drive import connect_source_to_rig, remove_drive_constraints
+from re_rigify.drive import (
+    DRIVE_MAP_PROPERTY,
+    connect_source_to_rig,
+    remove_drive_constraints,
+)
 from re_rigify.ui import (
     _load_pending_parameter_carrier,
     flush_parameter_carrier,
@@ -201,6 +205,10 @@ try:
     assert constraint.owner_space == "LOCAL"
     assert constraint.target_space == "LOCAL_OWNER_ORIENT"
     assert remove_drive_constraints(source) == mapped
+    duplicate[DRIVE_MAP_PROPERTY] = '{"spine": "upper_arm.L"}'
+    connect_source_to_rig(source, duplicate)
+    assert source.pose.bones["spine"].constraints[-1].subtarget == "upper_arm.L"
+    remove_drive_constraints(source)
 
     bpy.context.view_layer.objects.active = source
     item = source.data.re_rigify.bones[0]

@@ -27,6 +27,7 @@ from .core import (
     validate_config,
 )
 from .generate import generate_rig, validate_bone_parameters
+from .compatibility import validate_compatibility
 from .drive import connect_source_to_rig, remove_drive_constraints
 from .rigify_adapter import available_rig_types, is_rigify_enabled
 
@@ -89,6 +90,8 @@ def validate_active(context):
         return obj, (f"Invalid stored parameter JSON: {exc}",)
     result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
     errors = list(result.errors)
+    if not errors:
+        errors.extend(validate_compatibility(obj, payload["bones"]))
     if not errors:
         errors.extend(validate_bone_parameters(context, obj, payload["bones"], payload["collections"]))
     return obj, tuple(errors)
@@ -689,6 +692,8 @@ class RERIGIFY_OT_Import(bpy.types.Operator, ImportHelper):
             return {"CANCELLED"}
         result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
         errors = list(result.errors)
+        if not errors:
+            errors.extend(validate_compatibility(obj, payload["bones"]))
         if not errors:
             errors.extend(validate_bone_parameters(context, obj, payload["bones"], payload["collections"]))
         if errors:
