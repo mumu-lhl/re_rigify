@@ -7,6 +7,7 @@ import bpy
 
 import re_rigify
 from re_rigify.blender_config import armature_to_payload, payload_to_armature
+from re_rigify.core import DEFAULT_COMPATIBILITY
 from re_rigify.generate import apply_collection_config, validate_bone_parameters
 from re_rigify.operators import select_only
 from re_rigify.drive import connect_source_to_rig, remove_drive_constraints
@@ -69,6 +70,7 @@ try:
             "bone_name": "spine",
             "rigify_type": "basic.raw_copy",
             "parameters": {},
+            "compatibility": DEFAULT_COMPATIBILITY,
         }],
         "collections": [{
             "name": "Arms",

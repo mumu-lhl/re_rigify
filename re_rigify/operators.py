@@ -9,10 +9,17 @@ import bpy
 from bpy.props import BoolProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
-from .blender_config import armature_to_payload, payload_to_armature, suspend_carrier_updates
+from .blender_config import (
+    _apply_compatibility_to_item,
+    _compatibility_from_item,
+    armature_to_payload,
+    payload_to_armature,
+    suspend_carrier_updates,
+)
 from .core import (
     ConfigError,
     RIGIFY_DEFAULT_COLOR_SETS,
+    mirror_compatibility,
     mirror_parameter_value,
     normalize_config,
     remove_collection_references,
@@ -187,9 +194,17 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
         selected = [item for item in settings.bones if item.collection_selected]
         if not selected:
             selected = [settings.bones[settings.active_bone_index]]
-        snapshots = [(item.bone_name, item.rigify_type, item.parameters_json) for item in selected]
-        source_names = {bone_name for bone_name, _rig_type, _parameters in snapshots}
-        for bone_name, _rig_type, _parameters in snapshots:
+        snapshots = [
+            (
+                item.bone_name,
+                item.rigify_type,
+                item.parameters_json,
+                _compatibility_from_item(item),
+            )
+            for item in selected
+        ]
+        source_names = {bone_name for bone_name, _rig_type, _parameters, _compat in snapshots}
+        for bone_name, _rig_type, _parameters, _compat in snapshots:
             target_name = mirror_name(bone_name)
             if target_name == bone_name:
                 self.report({"ERROR"}, f"{bone_name!r} has no L/R side suffix")
@@ -204,7 +219,7 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
         remove_parameter_carrier()
         last_target_index = settings.active_bone_index
         with suspend_carrier_updates():
-            for bone_name, rig_type, parameters_json in snapshots:
+            for bone_name, rig_type, parameters_json, compatibility in snapshots:
                 target_name = mirror_name(bone_name)
                 target_index = next(
                     (index for index, item in enumerate(settings.bones) if item.bone_name == target_name),
@@ -219,6 +234,9 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
                     mirror_parameter_value(json.loads(parameters_json or "{}"), mirror_name),
                     ensure_ascii=False,
                     sort_keys=True,
+                )
+                _apply_compatibility_to_item(
+                    target, mirror_compatibility(compatibility, mirror_name)
                 )
                 last_target_index = target_index
         for item in settings.bones:
@@ -254,10 +272,12 @@ class RERIGIFY_OT_CopyParametersToSelected(bpy.types.Operator):
             self.report({"ERROR"}, "Check at least one target bone")
             return {"CANCELLED"}
         parameters_json = source.parameters_json
+        compatibility = _compatibility_from_item(source)
         with suspend_carrier_updates():
             for target in targets:
                 target.rigify_type = source.rigify_type
                 target.parameters_json = parameters_json
+                _apply_compatibility_to_item(target, compatibility)
         for item in settings.bones:
             item.collection_selected = False
         remove_parameter_carrier()

@@ -81,6 +81,31 @@ class PanelStructureTests(unittest.TestCase):
             self.assertIn("DEFAULT_CLOSED", {item.value for item in options.elts})
         self.assertEqual(found, default_closed)
 
+    def test_bone_panel_draws_compatibility_settings(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        panel = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "RERIGIFY_PT_Bones"
+        )
+        drawn_properties = {
+            call.args[1].value
+            for call in ast.walk(panel)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "prop"
+            and len(call.args) >= 2
+            and isinstance(call.args[1], ast.Constant)
+        }
+        self.assertTrue({
+            "force_connect_chain",
+            "skin_eye_compatibility",
+            "eye_forward_axis",
+            "upper_lid_pattern",
+            "lower_lid_pattern",
+            "synthetic_lids_fallback",
+        }.issubset(drawn_properties))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -257,6 +257,19 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
             actions = layout.row(align=True)
             actions.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
             actions.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
+            if item.rigify_type in {"limbs.super_finger", "face.skin_eye"}:
+                compatibility = layout.box()
+                compatibility.label(text="Compatibility")
+                compatibility.use_property_split = True
+                compatibility.use_property_decorate = False
+                compatibility.prop(item, "force_connect_chain")
+                if item.rigify_type == "face.skin_eye":
+                    compatibility.prop(item, "skin_eye_compatibility")
+                    if item.skin_eye_compatibility:
+                        compatibility.prop(item, "eye_forward_axis")
+                        compatibility.prop(item, "upper_lid_pattern")
+                        compatibility.prop(item, "lower_lid_pattern")
+                        compatibility.prop(item, "synthetic_lids_fallback")
 
 
 class RERIGIFY_PT_BoneParameters(_RERIGIFY_PT_Base, bpy.types.Panel):

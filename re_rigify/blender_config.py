@@ -11,7 +11,12 @@ from bpy.props import (
     PointerProperty, StringProperty,
 )
 
-from .core import FORMAT_NAME, SCHEMA_VERSION, normalize_config
+from .core import (
+    FORMAT_NAME,
+    SCHEMA_VERSION,
+    normalize_compatibility,
+    normalize_config,
+)
 
 
 _carrier_updates_suspended = 0
@@ -58,6 +63,22 @@ class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
     bone_name: StringProperty(name="Bone", update=_refresh_parameter_carrier)
     rigify_type: StringProperty(name="Rigify Type", update=_refresh_parameter_carrier)
     parameters_json: StringProperty(name="Parameters", default="{}")
+    force_connect_chain: BoolProperty(name="Force Connected Chain", default=False)
+    skin_eye_compatibility: BoolProperty(name="Build Skin Eye Topology", default=False)
+    eye_forward_axis: EnumProperty(
+        name="Eye Forward",
+        items=(
+            ("AUTO", "Automatic", "Infer the horizontal viewing direction from eyelid bones"),
+            ("+X", "+X", "Point the temporary eye bone along positive X"),
+            ("-X", "-X", "Point the temporary eye bone along negative X"),
+            ("+Y", "+Y", "Point the temporary eye bone along positive Y"),
+            ("-Y", "-Y", "Point the temporary eye bone along negative Y"),
+        ),
+        default="AUTO",
+    )
+    upper_lid_pattern: StringProperty(name="Upper Eyelids")
+    lower_lid_pattern: StringProperty(name="Lower Eyelids")
+    synthetic_lids_fallback: BoolProperty(name="Synthetic Eyelid Fallback", default=False)
 
 
 class RERIGIFY_PG_CollectionRule(bpy.types.PropertyGroup):
@@ -107,6 +128,23 @@ CLASSES = (
 )
 
 
+def _compatibility_from_item(item) -> dict:
+    return normalize_compatibility({
+        "force_connect_chain": item.force_connect_chain,
+        "skin_eye_compatibility": item.skin_eye_compatibility,
+        "eye_forward_axis": item.eye_forward_axis,
+        "upper_lid_pattern": item.upper_lid_pattern,
+        "lower_lid_pattern": item.lower_lid_pattern,
+        "synthetic_lids_fallback": item.synthetic_lids_fallback,
+    })
+
+
+def _apply_compatibility_to_item(item, source: dict) -> None:
+    source = normalize_compatibility(source)
+    for name, value in source.items():
+        setattr(item, name, value)
+
+
 def armature_to_payload(armature: bpy.types.Armature) -> dict:
     settings = armature.re_rigify
     return {
@@ -116,6 +154,7 @@ def armature_to_payload(armature: bpy.types.Armature) -> dict:
             "bone_name": item.bone_name,
             "rigify_type": item.rigify_type,
             "parameters": json.loads(item.parameters_json or "{}"),
+            "compatibility": _compatibility_from_item(item),
         } for item in settings.bones],
         "collections": [{
             "name": item.name,
@@ -147,6 +186,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
         item.bone_name = source["bone_name"]
         item.rigify_type = source["rigify_type"]
         item.parameters_json = json.dumps(source["parameters"], ensure_ascii=False, sort_keys=True)
+        _apply_compatibility_to_item(item, source["compatibility"])
     for source in payload["collections"]:
         item = settings.collections.add()
         item.name = source["name"]
