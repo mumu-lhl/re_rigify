@@ -106,6 +106,38 @@ class PanelStructureTests(unittest.TestCase):
             "synthetic_lids_fallback",
         }.issubset(drawn_properties))
 
+    def test_parameter_panel_routes_rigify_operators_to_carrier(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        panel = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "RERIGIFY_PT_BoneParameters"
+        )
+        calls = [
+            call for call in ast.walk(panel)
+            if isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Name)
+            and call.func.id == "RigifyParameterLayout"
+        ]
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(any(
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "context_pointer_set"
+            for call in ast.walk(panel)
+        ))
+
+    def test_parameter_collection_operators_are_registered(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        classes = {
+            node.name for node in tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertTrue({
+            "RERIGIFY_OT_parameter_collection_ref_add",
+            "RERIGIFY_OT_parameter_collection_ref_remove",
+        }.issubset(classes))
+
 
 if __name__ == "__main__":
     unittest.main()

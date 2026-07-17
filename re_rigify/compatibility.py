@@ -46,6 +46,18 @@ class EyePlan:
     lower: list[EyeSegment]
 
 
+def apply_connection_operations(edit_bones, connections) -> None:
+    """Connect edit bones while preserving every child's original head position."""
+    for parent_name, child_name, connected in connections:
+        parent = edit_bones[parent_name]
+        child = edit_bones[child_name]
+        child_head = child.head.copy() if hasattr(child.head, "copy") else child.head
+        child.parent = parent
+        if connected:
+            parent.tail = child_head
+        child.use_connect = connected
+
+
 def plan_connected_chain(
     root: str,
     rigify_type: str,
@@ -275,10 +287,7 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
     bpy.ops.object.mode_set(mode="EDIT")
     try:
         edit_bones = obj.data.edit_bones
-        for parent_name, child_name, connected in plan.connections:
-            child = edit_bones[child_name]
-            child.parent = edit_bones[parent_name]
-            child.use_connect = connected
+        apply_connection_operations(edit_bones, plan.connections)
         for eye_plan in plan.eye_plans:
             eye = edit_bones[eye_plan.eye_name]
             eye.tail = eye.head + Vector(eye_plan.forward_axis) * eye.length

@@ -230,8 +230,15 @@ try:
     arms = ref_carrier.id_data.data.collections_all["Arms"]
     ref_carrier.rigify_parameters.fk_layers_extra = True
     ref_carrier.rigify_parameters.tweak_layers_extra = True
-    ref_carrier.rigify_parameters.fk_coll_refs.add().set_collection(arms)
-    ref_carrier.rigify_parameters.tweak_coll_refs.add().set_collection(arms)
+    with bpy.context.temp_override(
+        object=ref_carrier.id_data,
+        active_object=ref_carrier.id_data,
+        active_pose_bone=ref_carrier,
+    ):
+        assert bpy.ops.pose.rigify_collection_ref_add(prop_name="fk_coll_refs") == {"FINISHED"}
+        assert bpy.ops.pose.rigify_collection_ref_add(prop_name="tweak_coll_refs") == {"FINISHED"}
+    ref_carrier.rigify_parameters.fk_coll_refs[-1].set_collection(arms)
+    ref_carrier.rigify_parameters.tweak_coll_refs[-1].set_collection(arms)
     flush_parameter_carrier()
     saved_refs = __import__("json").loads(ref_item.parameters_json)
     assert saved_refs["fk_coll_refs"] == ["Arms"]

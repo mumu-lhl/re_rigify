@@ -6,7 +6,12 @@ import json
 
 import bpy
 
-from .rigify_adapter import apply_parameters, draw_parameters, parameter_json
+from .rigify_adapter import (
+    RigifyParameterLayout,
+    apply_parameters,
+    draw_parameters,
+    parameter_json,
+)
 
 
 HELPER_NAME = "__ReRigify_Parameter_Carrier__"
@@ -188,6 +193,55 @@ class RERIGIFY_UL_ColorSets(bpy.types.UIList):
         layout.label(text=item.name or "Unnamed", translate=False)
 
 
+def _active_parameter_refs(context, prop_name):
+    obj = context.object
+    if obj is None or obj.type != "ARMATURE":
+        return None
+    settings = obj.data.re_rigify
+    if not settings.bones or settings.active_bone_index >= len(settings.bones):
+        return None
+    item = settings.bones[settings.active_bone_index]
+    carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
+    if carrier is None:
+        return None
+    from rigify.utils.layers import is_collection_ref_list_prop
+    refs = getattr(carrier.rigify_parameters, prop_name, None)
+    return refs if refs is not None and is_collection_ref_list_prop(refs) else None
+
+
+class RERIGIFY_OT_parameter_collection_ref_add(bpy.types.Operator):
+    bl_idname = "re_rigify.parameter_collection_ref_add"
+    bl_label = "Add Bone Collection Reference"
+    bl_options = {"UNDO", "INTERNAL"}
+
+    prop_name: bpy.props.StringProperty(name="Property Name")
+
+    def execute(self, context):
+        refs = _active_parameter_refs(context, self.prop_name)
+        if refs is None:
+            return {"CANCELLED"}
+        refs.add()
+        flush_parameter_carrier()
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_parameter_collection_ref_remove(bpy.types.Operator):
+    bl_idname = "re_rigify.parameter_collection_ref_remove"
+    bl_label = "Remove Bone Collection Reference"
+    bl_options = {"UNDO", "INTERNAL"}
+
+    prop_name: bpy.props.StringProperty(name="Property Name")
+    index: bpy.props.IntProperty(name="Entry Index")
+
+    def execute(self, context):
+        refs = _active_parameter_refs(context, self.prop_name)
+        if refs is None or not 0 <= self.index < len(refs):
+            return {"CANCELLED"}
+        refs.remove(self.index)
+        flush_parameter_carrier()
+        return {"FINISHED"}
+
+
 class _RERIGIFY_PT_Base:
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -290,7 +344,8 @@ class RERIGIFY_PT_BoneParameters(_RERIGIFY_PT_Base, bpy.types.Panel):
         carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
         if carrier is not None:
             try:
-                draw_parameters(layout.column(), carrier)
+                parameter_layout = RigifyParameterLayout(layout.column())
+                draw_parameters(parameter_layout, carrier)
                 layout.label(text="Parameters save automatically", icon="CHECKMARK")
             except Exception as exc:
                 layout.label(text=f"Parameter UI unavailable: {exc}", icon="ERROR")
@@ -525,6 +580,8 @@ class RERIGIFY_PT_Configuration(_RERIGIFY_PT_Base, bpy.types.Panel):
 CLASSES = (
     RERIGIFY_UL_Bones, RERIGIFY_UL_Collections, RERIGIFY_UL_Rules,
     RERIGIFY_UL_ColorSets,
+    RERIGIFY_OT_parameter_collection_ref_add,
+    RERIGIFY_OT_parameter_collection_ref_remove,
     RERIGIFY_PT_Main,
     RERIGIFY_PT_Bones, RERIGIFY_PT_BoneParameters,
     RERIGIFY_PT_Collections, RERIGIFY_PT_CollectionRules,

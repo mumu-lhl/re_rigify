@@ -7,7 +7,11 @@ import json
 import bpy
 
 from .core import ConfigError, infer_rigify_topology, resolve_collection_rules
-from .compatibility import apply_compatibility_plan, build_compatibility_plan
+from .compatibility import (
+    apply_compatibility_plan,
+    apply_connection_operations,
+    build_compatibility_plan,
+)
 from .drive import DRIVE_MAP_PROPERTY
 from .rigify_adapter import apply_parameters
 
@@ -60,11 +64,7 @@ def apply_rigify_topology(context, obj: bpy.types.Object, bones: list[dict]) -> 
     if not operations:
         return
     bpy.ops.object.mode_set(mode="EDIT")
-    edit_bones = obj.data.edit_bones
-    for parent_name, child_name, connected in operations:
-        child = edit_bones[child_name]
-        child.parent = edit_bones[parent_name]
-        child.use_connect = connected
+    apply_connection_operations(obj.data.edit_bones, operations)
     bpy.ops.object.mode_set(mode="OBJECT")
 
 

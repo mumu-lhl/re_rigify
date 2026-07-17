@@ -9,6 +9,33 @@ import addon_utils
 import bpy
 
 
+class RigifyParameterLayout:
+    """Route carrier-only Rigify operators without replacing the panel context."""
+
+    _CONTAINER_METHODS = {
+        "box", "column", "column_flow", "grid_flow", "menu_pie", "row", "split",
+    }
+    _OPERATOR_MAP = {
+        "pose.rigify_collection_ref_add": "re_rigify.parameter_collection_ref_add",
+        "pose.rigify_collection_ref_remove": "re_rigify.parameter_collection_ref_remove",
+    }
+
+    def __init__(self, layout):
+        object.__setattr__(self, "_layout", layout)
+
+    def __getattr__(self, name):
+        value = getattr(self._layout, name)
+        if name in self._CONTAINER_METHODS:
+            return lambda *args, **kwargs: type(self)(value(*args, **kwargs))
+        return value
+
+    def __setattr__(self, name, value):
+        setattr(self._layout, name, value)
+
+    def operator(self, operator, **kwargs):
+        return self._layout.operator(self._OPERATOR_MAP.get(operator, operator), **kwargs)
+
+
 def is_rigify_enabled() -> bool:
     return bool(addon_utils.check("rigify")[1])
 

@@ -2,6 +2,7 @@ import unittest
 
 from re_rigify.compatibility import (
     EyeLandmark,
+    apply_connection_operations,
     plan_connected_chain,
     plan_eye_landmarks,
     validate_compatibility,
@@ -25,6 +26,40 @@ class FakeBones(list):
 class FakeObject:
     def __init__(self, bones):
         self.data = type("Data", (), {"bones": FakeBones(bones)})()
+
+
+class FakeEditBone:
+    def __init__(self, name, head, tail):
+        self.name = name
+        self.head = head
+        self.tail = tail
+        self.parent = None
+        self.use_connect = False
+
+
+class ConnectionApplicationTests(unittest.TestCase):
+    def test_connection_moves_parent_tail_to_child_head(self):
+        parent = FakeEditBone("Elbow_L", (0, 0, 0), (1, 0, 0))
+        child = FakeEditBone("Wrist_L", (2, 0, 0), (3, 0, 0))
+        bones = {"Elbow_L": parent, "Wrist_L": child}
+
+        apply_connection_operations(bones, [("Elbow_L", "Wrist_L", True)])
+
+        self.assertEqual(parent.tail, (2, 0, 0))
+        self.assertEqual(child.head, (2, 0, 0))
+        self.assertIs(child.parent, parent)
+        self.assertTrue(child.use_connect)
+
+    def test_disconnected_parenting_does_not_move_parent_tail(self):
+        parent = FakeEditBone("Foot_L", (0, 0, 0), (1, 0, 0))
+        child = FakeEditBone("Heel_L", (2, 0, 0), (3, 0, 0))
+        bones = {"Foot_L": parent, "Heel_L": child}
+
+        apply_connection_operations(bones, [("Foot_L", "Heel_L", False)])
+
+        self.assertEqual(parent.tail, (1, 0, 0))
+        self.assertIs(child.parent, parent)
+        self.assertFalse(child.use_connect)
 
 
 class ConnectedChainPlanningTests(unittest.TestCase):
