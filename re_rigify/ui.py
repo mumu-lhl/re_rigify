@@ -311,11 +311,20 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
             actions = layout.row(align=True)
             actions.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
             actions.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
-            if item.rigify_type in {"limbs.super_finger", "face.skin_eye"}:
+            if item.rigify_type in {"limbs.arm", "limbs.super_finger", "face.skin_eye"}:
                 compatibility = layout.box()
                 compatibility.label(text="Compatibility")
                 compatibility.use_property_split = True
                 compatibility.use_property_decorate = False
+                if item.rigify_type == "limbs.arm":
+                    compatibility.prop(item, "roll_bones_enabled")
+                    if item.roll_bones_enabled:
+                        compatibility.prop_search(
+                            item, "upper_arm_roll_bone", obj.data, "bones"
+                        )
+                        compatibility.prop_search(
+                            item, "forearm_roll_bone", obj.data, "bones"
+                        )
                 if item.rigify_type == "limbs.super_finger":
                     compatibility.prop(item, "force_connect_chain")
                 if item.rigify_type == "face.skin_eye":

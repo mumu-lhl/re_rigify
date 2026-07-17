@@ -3,6 +3,7 @@ import unittest
 from re_rigify.core import (
     ConfigError,
     DEFAULT_COMPATIBILITY,
+    choose_drive_spec,
     choose_drive_target,
     infer_rigify_topology,
     mirror_compatibility,
@@ -65,6 +66,9 @@ class ConfigValidationTests(unittest.TestCase):
             **DEFAULT_COMPATIBILITY,
             "force_connect_chain": True,
             "skin_eye_compatibility": True,
+            "roll_bones_enabled": True,
+            "upper_arm_roll_bone": "ShoulderRoll_L",
+            "forearm_roll_bone": "ArmRoll_L",
             "eye_forward_axis": "-Y",
             "upper_lid_pattern": "Eye_up_*_L",
             "lower_lid_pattern": "Eye_bottom_*_L",
@@ -107,6 +111,17 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(result["eye_forward_axis"], "-X")
         self.assertEqual(result["upper_lid_pattern"], "Eye_up_*_R")
 
+    def test_mirror_compatibility_maps_roll_bones(self):
+        result = mirror_compatibility({
+            **DEFAULT_COMPATIBILITY,
+            "roll_bones_enabled": True,
+            "upper_arm_roll_bone": "ShoulderRoll_L",
+            "forearm_roll_bone": "ArmRoll_L",
+        }, lambda name: name.replace("_L", "_R"))
+
+        self.assertEqual(result["upper_arm_roll_bone"], "ShoulderRoll_R")
+        self.assertEqual(result["forearm_roll_bone"], "ArmRoll_R")
+
     def test_unique_blender_name_increments_numeric_suffix(self):
         names = {"Arm", "Arm.001", "Arm.003", "Leg"}
 
@@ -127,12 +142,13 @@ class ConfigValidationTests(unittest.TestCase):
             "fk_coll_refs": ["Main"], "tweak_coll_refs": [], "unrelated": "FK",
         })
 
-    def test_drive_target_prefers_def_then_org_then_same_name(self):
+    def test_drive_target_prefers_org_then_def_then_same_name(self):
         self.assertEqual(
             choose_drive_target("Arm_L", {"Arm_L", "ORG-Arm_L", "DEF-Arm_L"}),
-            "DEF-Arm_L",
+            "ORG-Arm_L",
         )
         self.assertEqual(choose_drive_target("Arm_L", {"Arm_L", "ORG-Arm_L"}), "ORG-Arm_L")
+        self.assertEqual(choose_drive_target("Arm_L", {"Arm_L", "DEF-Arm_L"}), "DEF-Arm_L")
         self.assertEqual(choose_drive_target("Arm_L", {"Arm_L"}), "Arm_L")
         self.assertIsNone(choose_drive_target("Arm_L", {"DEF-Arm_R"}))
 
@@ -144,6 +160,17 @@ class ConfigValidationTests(unittest.TestCase):
                 explicit={"Eye_up_01_L": "DEF-RR-lid01.T.L"},
             ),
             "DEF-RR-lid01.T.L",
+        )
+
+    def test_rotation_drive_mapping_overrides_transform_mapping(self):
+        self.assertEqual(
+            choose_drive_spec(
+                "ShoulderRoll_L",
+                {"ORG-ShoulderRoll_L", "MCH-RR-ShoulderRoll_L"},
+                {"ShoulderRoll_L": "ORG-ShoulderRoll_L"},
+                {"ShoulderRoll_L": "MCH-RR-ShoulderRoll_L"},
+            ),
+            ("MCH-RR-ShoulderRoll_L", "ROTATION"),
         )
 
     def test_infers_common_disconnected_arm_leg_spine_and_head_topology(self):

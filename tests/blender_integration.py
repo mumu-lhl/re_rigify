@@ -13,6 +13,7 @@ from re_rigify.generate import apply_collection_config, validate_bone_parameters
 from re_rigify.operators import select_only
 from re_rigify.drive import (
     DRIVE_MAP_PROPERTY,
+    ROTATION_DRIVE_MAP_PROPERTY,
     connect_source_to_rig,
     remove_drive_constraints,
 )
@@ -208,6 +209,13 @@ try:
     duplicate[DRIVE_MAP_PROPERTY] = '{"spine": "upper_arm.L"}'
     connect_source_to_rig(source, duplicate)
     assert source.pose.bones["spine"].constraints[-1].subtarget == "upper_arm.L"
+    remove_drive_constraints(source)
+    duplicate[ROTATION_DRIVE_MAP_PROPERTY] = '{"spine": "upper_arm.L"}'
+    connect_source_to_rig(source, duplicate)
+    constraint = source.pose.bones["spine"].constraints[-1]
+    assert constraint.type == "COPY_ROTATION"
+    assert constraint.owner_space == "POSE"
+    assert constraint.target_space == "POSE"
     remove_drive_constraints(source)
 
     bpy.context.view_layer.objects.active = source

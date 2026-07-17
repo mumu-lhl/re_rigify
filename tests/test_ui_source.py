@@ -93,13 +93,16 @@ class PanelStructureTests(unittest.TestCase):
             for call in ast.walk(panel)
             if isinstance(call, ast.Call)
             and isinstance(call.func, ast.Attribute)
-            and call.func.attr == "prop"
+            and call.func.attr in {"prop", "prop_search"}
             and len(call.args) >= 2
             and isinstance(call.args[1], ast.Constant)
         }
         self.assertTrue({
             "force_connect_chain",
             "skin_eye_compatibility",
+            "roll_bones_enabled",
+            "upper_arm_roll_bone",
+            "forearm_roll_bone",
             "eye_forward_axis",
             "upper_lid_pattern",
             "lower_lid_pattern",

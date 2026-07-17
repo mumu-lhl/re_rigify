@@ -65,6 +65,9 @@ class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
     parameters_json: StringProperty(name="Parameters", default="{}")
     force_connect_chain: BoolProperty(name="Force Connected Chain", default=False)
     skin_eye_compatibility: BoolProperty(name="Build Skin Eye Topology", default=False)
+    roll_bones_enabled: BoolProperty(name="Drive Roll Bones", default=False)
+    upper_arm_roll_bone: StringProperty(name="Upper Arm Roll")
+    forearm_roll_bone: StringProperty(name="Forearm Roll")
     eye_forward_axis: EnumProperty(
         name="Eye Forward",
         items=(
@@ -132,6 +135,9 @@ def _compatibility_from_item(item) -> dict:
     return normalize_compatibility({
         "force_connect_chain": item.force_connect_chain,
         "skin_eye_compatibility": item.skin_eye_compatibility,
+        "roll_bones_enabled": item.roll_bones_enabled,
+        "upper_arm_roll_bone": item.upper_arm_roll_bone,
+        "forearm_roll_bone": item.forearm_roll_bone,
         "eye_forward_axis": item.eye_forward_axis,
         "upper_lid_pattern": item.upper_lid_pattern,
         "lower_lid_pattern": item.lower_lid_pattern,

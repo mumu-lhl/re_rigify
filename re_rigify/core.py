@@ -14,6 +14,9 @@ SCHEMA_VERSION = 1
 DEFAULT_COMPATIBILITY = {
     "force_connect_chain": False,
     "skin_eye_compatibility": False,
+    "roll_bones_enabled": False,
+    "upper_arm_roll_bone": "",
+    "forearm_roll_bone": "",
     "eye_forward_axis": "AUTO",
     "upper_lid_pattern": "",
     "lower_lid_pattern": "",
@@ -65,10 +68,24 @@ def choose_drive_target(
     explicit_target = (explicit or {}).get(source_bone_name)
     if explicit_target in names:
         return explicit_target
-    for candidate in (f"DEF-{source_bone_name}", f"ORG-{source_bone_name}", source_bone_name):
+    for candidate in (f"ORG-{source_bone_name}", f"DEF-{source_bone_name}", source_bone_name):
         if candidate in names:
             return candidate
     return None
+
+
+def choose_drive_spec(
+    source_bone_name: str,
+    target_bone_names: Iterable[str],
+    transform_explicit: dict[str, str] | None = None,
+    rotation_explicit: dict[str, str] | None = None,
+) -> tuple[str, str] | None:
+    names = set(target_bone_names)
+    rotation_target = (rotation_explicit or {}).get(source_bone_name)
+    if rotation_target in names:
+        return rotation_target, "ROTATION"
+    target = choose_drive_target(source_bone_name, names, transform_explicit)
+    return (target, "TRANSFORM") if target is not None else None
 
 
 def mirror_parameter_value(value: Any, name_mapper) -> Any:
@@ -87,10 +104,14 @@ def normalize_compatibility(value: object, path: str = "compatibility") -> dict[
     result = dict(DEFAULT_COMPATIBILITY)
     for name in (
         "force_connect_chain", "skin_eye_compatibility", "synthetic_lids_fallback",
+        "roll_bones_enabled",
     ):
         if name in value:
             result[name] = _require_type(value[name], bool, f"{path}.{name}")
-    for name in ("upper_lid_pattern", "lower_lid_pattern"):
+    for name in (
+        "upper_lid_pattern", "lower_lid_pattern",
+        "upper_arm_roll_bone", "forearm_roll_bone",
+    ):
         if name in value:
             result[name] = _require_type(value[name], str, f"{path}.{name}")
     if "eye_forward_axis" in value:
@@ -105,6 +126,8 @@ def mirror_compatibility(value: dict[str, Any], name_mapper) -> dict[str, Any]:
     result = normalize_compatibility(value)
     result["upper_lid_pattern"] = name_mapper(result["upper_lid_pattern"])
     result["lower_lid_pattern"] = name_mapper(result["lower_lid_pattern"])
+    result["upper_arm_roll_bone"] = name_mapper(result["upper_arm_roll_bone"])
+    result["forearm_roll_bone"] = name_mapper(result["forearm_roll_bone"])
     result["eye_forward_axis"] = {
         "+X": "-X",
         "-X": "+X",

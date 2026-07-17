@@ -18,6 +18,7 @@ CHAIN_MIN_LENGTHS = {
 class CompatibilityPlan:
     connections: list[tuple[str, str, bool]] = field(default_factory=list)
     eye_plans: list[object] = field(default_factory=list)
+    roll_plans: list[object] = field(default_factory=list)
     source_to_helper: dict[str, str] = field(default_factory=dict)
 
 
@@ -44,6 +45,42 @@ class EyePlan:
     forward_axis: Point
     upper: list[EyeSegment]
     lower: list[EyeSegment]
+
+
+@dataclass(frozen=True)
+class RollBonePlan:
+    source_name: str
+    target_name: str
+    helper_name: str
+
+
+def plan_roll_bones(obj, config: dict) -> list[RollBonePlan]:
+    compatibility = config.get("compatibility", {})
+    if not compatibility.get("roll_bones_enabled", False):
+        return []
+    if config.get("rigify_type") != "limbs.arm":
+        raise ConfigError("roll bone compatibility is only supported by limbs.arm")
+    segments = config.get("parameters", {}).get("segments", 2)
+    segment_suffix = ".001" if segments > 1 else ""
+
+    result = []
+    for property_name in ("upper_arm_roll_bone", "forearm_roll_bone"):
+        source_name = compatibility.get(property_name, "")
+        if not source_name:
+            continue
+        source_bone = obj.data.bones.get(source_name)
+        if source_bone is None:
+            raise ConfigError(f"roll bone does not exist: {source_name!r}")
+        if source_bone.parent is None:
+            raise ConfigError(f"roll bone {source_name!r} must have a parent")
+        result.append(RollBonePlan(
+            source_name,
+            f"DEF-{source_bone.parent.name}{segment_suffix}",
+            f"MCH-RR-{source_name}",
+        ))
+    if not result:
+        raise ConfigError("roll bone compatibility requires at least one roll bone")
+    return result
 
 
 def apply_connection_operations(edit_bones, connections) -> None:
@@ -213,6 +250,7 @@ def build_compatibility_plan(obj, bone_configs: list[dict]) -> CompatibilityPlan
             parents,
             enabled=compatibility.get("force_connect_chain", False),
         ))
+        plan.roll_plans.extend(plan_roll_bones(obj, config))
         if (
             config["rigify_type"] == "face.skin_eye"
             and compatibility.get("skin_eye_compatibility", False)
@@ -319,3 +357,49 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
                 for collection in eye_bone.collections:
                     collection.assign(helper_bone)
     return dict(plan.source_to_helper)
+
+
+def apply_roll_helpers(context, source, rig, plans: list[RollBonePlan]) -> dict[str, str]:
+    """Create aligned generated-rig helpers for rotation-only roll bone driving."""
+    if not plans:
+        return {}
+    import bpy
+    from mathutils import Vector
+
+    if context.object and context.object.mode != "OBJECT":
+        bpy.ops.object.mode_set(mode="OBJECT")
+    context.view_layer.objects.active = rig
+    rig.hide_set(False)
+    rig.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    try:
+        edit_bones = rig.data.edit_bones
+        source_to_rig = rig.matrix_world.inverted() @ source.matrix_world
+        for plan in plans:
+            target = edit_bones.get(plan.target_name)
+            if target is None:
+                raise ConfigError(
+                    f"roll target {plan.target_name!r} was not generated"
+                )
+            source_bone = source.data.bones.get(plan.source_name)
+            if source_bone is None:
+                raise ConfigError(f"roll bone does not exist: {plan.source_name!r}")
+            helper = edit_bones.get(plan.helper_name) or edit_bones.new(plan.helper_name)
+            helper.head = source_to_rig @ source_bone.head_local
+            helper.tail = source_to_rig @ source_bone.tail_local
+            rest_matrix = source_to_rig @ source_bone.matrix_local
+            helper.align_roll(rest_matrix.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+            helper.parent = target
+            helper.use_connect = False
+            helper.use_deform = False
+    finally:
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+    helper_collection = (
+        rig.data.collections_all.get("MCH")
+        or rig.data.collections_all.get("ORG")
+    )
+    if helper_collection is not None:
+        for plan in plans:
+            helper_collection.assign(rig.data.bones[plan.helper_name])
+    return {plan.source_name: plan.helper_name for plan in plans}

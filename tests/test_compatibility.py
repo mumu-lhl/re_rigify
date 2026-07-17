@@ -3,6 +3,7 @@ import unittest
 from re_rigify.compatibility import (
     EyeLandmark,
     apply_connection_operations,
+    build_compatibility_plan,
     plan_connected_chain,
     plan_eye_landmarks,
     validate_compatibility,
@@ -168,6 +169,60 @@ class EyePlanningTests(unittest.TestCase):
 
 
 class CompatibilityValidationTests(unittest.TestCase):
+    def test_arm_roll_bones_map_to_second_deform_segments(self):
+        arm = FakeBone("Arm_L")
+        elbow = FakeBone("Elbow_L", arm)
+        wrist = FakeBone("Wrist_L", elbow)
+        shoulder_roll = FakeBone("ShoulderRoll_L", arm)
+        forearm_roll = FakeBone("ArmRoll_L", elbow)
+        obj = FakeObject([arm, elbow, wrist, shoulder_roll, forearm_roll])
+        config = {
+            "bone_name": "Arm_L",
+            "rigify_type": "limbs.arm",
+            "parameters": {"segments": 2},
+            "compatibility": {
+                **DEFAULT_COMPATIBILITY,
+                "roll_bones_enabled": True,
+                "upper_arm_roll_bone": "ShoulderRoll_L",
+                "forearm_roll_bone": "ArmRoll_L",
+            },
+        }
+
+        plan = build_compatibility_plan(obj, [config])
+
+        self.assertEqual(
+            [
+                (item.source_name, item.target_name, item.helper_name)
+                for item in plan.roll_plans
+            ],
+            [
+                ("ShoulderRoll_L", "DEF-Arm_L.001", "MCH-RR-ShoulderRoll_L"),
+                ("ArmRoll_L", "DEF-Elbow_L.001", "MCH-RR-ArmRoll_L"),
+            ],
+        )
+
+    def test_arm_roll_bones_fall_back_to_single_deform_segment(self):
+        arm = FakeBone("Arm_L")
+        roll = FakeBone("ShoulderRoll_L", arm)
+        obj = FakeObject([arm, roll])
+        config = {
+            "bone_name": "Arm_L",
+            "rigify_type": "limbs.arm",
+            "parameters": {"segments": 1},
+            "compatibility": {
+                **DEFAULT_COMPATIBILITY,
+                "roll_bones_enabled": True,
+                "upper_arm_roll_bone": "ShoulderRoll_L",
+            },
+        }
+
+        plan = build_compatibility_plan(obj, [config])
+
+        self.assertEqual(
+            [(item.source_name, item.target_name) for item in plan.roll_plans],
+            [("ShoulderRoll_L", "DEF-Arm_L")],
+        )
+
     def test_reports_ambiguous_forced_chain_with_bone_context(self):
         root = FakeBone("Thumb_01_R")
         obj = FakeObject([

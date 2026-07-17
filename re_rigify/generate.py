@@ -10,9 +10,10 @@ from .core import ConfigError, infer_rigify_topology, resolve_collection_rules
 from .compatibility import (
     apply_compatibility_plan,
     apply_connection_operations,
+    apply_roll_helpers,
     build_compatibility_plan,
 )
-from .drive import DRIVE_MAP_PROPERTY
+from .drive import DRIVE_MAP_PROPERTY, ROTATION_DRIVE_MAP_PROPERTY
 from .rigify_adapter import apply_parameters
 
 
@@ -182,6 +183,9 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         result_obj = context.view_layer.objects.active
         if result_obj == duplicate and rigs:
             result_obj = rigs[-1]
+        rotation_drive_map = apply_roll_helpers(
+            context, source, result_obj, compatibility_plan.roll_plans,
+        )
         target_names = set(result_obj.pose.bones.keys())
         from .core import choose_drive_target
         explicit_drive_map = {
@@ -191,6 +195,9 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         }
         result_obj[DRIVE_MAP_PROPERTY] = json.dumps(
             explicit_drive_map, ensure_ascii=False, sort_keys=True,
+        )
+        result_obj[ROTATION_DRIVE_MAP_PROPERTY] = json.dumps(
+            rotation_drive_map, ensure_ascii=False, sort_keys=True,
         )
         source.re_rigify_generated_rig = result_obj
         cleanup_metarigs(source)
