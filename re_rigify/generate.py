@@ -7,6 +7,7 @@ import json
 import bpy
 
 from .core import ConfigError, infer_rigify_topology, resolve_collection_rules
+from .compatibility import apply_compatibility_plan, build_compatibility_plan
 from .rigify_adapter import apply_parameters
 
 
@@ -169,6 +170,8 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         duplicate.select_set(True)
         context.view_layer.objects.active = duplicate
         apply_rigify_topology(context, duplicate, payload["bones"])
+        compatibility_plan = build_compatibility_plan(duplicate, payload["bones"])
+        apply_compatibility_plan(duplicate, compatibility_plan)
         bpy.ops.object.mode_set(mode="POSE")
         result = bpy.ops.pose.rigify_generate()
         if "FINISHED" not in result:

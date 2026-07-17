@@ -7,6 +7,7 @@ import bpy
 
 import re_rigify
 from re_rigify.blender_config import armature_to_payload, payload_to_armature
+from re_rigify.compatibility import apply_compatibility_plan, build_compatibility_plan
 from re_rigify.core import DEFAULT_COMPATIBILITY
 from re_rigify.generate import apply_collection_config, validate_bone_parameters
 from re_rigify.operators import select_only
@@ -84,6 +85,34 @@ try:
     }
     payload_to_armature(source.data, payload)
     assert armature_to_payload(source.data) == payload
+
+    finger_source = make_armature(
+        "Finger Source", ["Wrist_R", "Thumb_01_R", "Thumb_02_R", "Thumb_03_R"]
+    )
+    bpy.ops.object.mode_set(mode="EDIT")
+    finger_source.data.edit_bones["Thumb_01_R"].parent = finger_source.data.edit_bones["Wrist_R"]
+    finger_source.data.edit_bones["Thumb_02_R"].parent = finger_source.data.edit_bones["Thumb_01_R"]
+    finger_source.data.edit_bones["Thumb_03_R"].parent = finger_source.data.edit_bones["Thumb_02_R"]
+    bpy.ops.object.mode_set(mode="OBJECT")
+    finger_metarig = finger_source.copy()
+    finger_metarig.data = finger_source.data.copy()
+    bpy.context.scene.collection.objects.link(finger_metarig)
+    select_only(bpy.context, finger_metarig)
+    finger_plan = build_compatibility_plan(finger_metarig, [{
+        "bone_name": "Thumb_01_R",
+        "rigify_type": "limbs.super_finger",
+        "compatibility": {**DEFAULT_COMPATIBILITY, "force_connect_chain": True},
+    }])
+    apply_compatibility_plan(finger_metarig, finger_plan)
+    assert finger_metarig.data.bones["Thumb_02_R"].use_connect
+    assert finger_metarig.data.bones["Thumb_03_R"].use_connect
+    assert not finger_source.data.bones["Thumb_02_R"].use_connect
+    assert not finger_source.data.bones["Thumb_03_R"].use_connect
+    for temp in (finger_metarig, finger_source):
+        temp_data = temp.data
+        bpy.data.objects.remove(temp, do_unlink=True)
+        bpy.data.armatures.remove(temp_data)
+    select_only(bpy.context, source)
 
     settings = source.data.re_rigify
     settings.bones[0].collection_selected = True
