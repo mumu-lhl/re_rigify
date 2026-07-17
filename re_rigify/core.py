@@ -244,6 +244,8 @@ def infer_rigify_topology(
             head = find(root, ("head",))
             if not head:
                 raise ConfigError(f"{root!r} ({rig_type}) requires a connected head child")
+            if parent := parents.get(root):
+                operations.append((parent, root, False))
             operations.append((root, head, True))
     return operations
 

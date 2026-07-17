@@ -13,6 +13,7 @@ from re_rigify.generate import apply_collection_config, validate_bone_parameters
 from re_rigify.operators import select_only
 from re_rigify.drive import (
     DRIVE_MAP_PROPERTY,
+    DRIVER_BONE_PREFIX,
     ROTATION_DRIVE_MAP_PROPERTY,
     connect_source_to_rig,
     remove_drive_constraints,
@@ -69,6 +70,11 @@ try:
     bpy.data.armatures.remove(batch_data)
 
     source = make_armature("Source", ["spine", "upper_arm.L", "upper_arm.R"])
+    bpy.ops.object.mode_set(mode="EDIT")
+    source.data.edit_bones["upper_arm.L"].head = source.data.edit_bones["spine"].tail
+    source.data.edit_bones["upper_arm.L"].parent = source.data.edit_bones["spine"]
+    source.data.edit_bones["upper_arm.L"].use_connect = True
+    bpy.ops.object.mode_set(mode="OBJECT")
     payload = {
         "format": "re-rigify",
         "schema_version": 1,
@@ -196,19 +202,46 @@ try:
     assert collection.rigify_ui_title == "Arm Controls"
     assert {bone.name for bone in collection.bones} == {"upper_arm.L", "upper_arm.R"}
 
+    source_bind_matrix = source.pose.bones["spine"].matrix.copy()
     mapped, unmatched = connect_source_to_rig(source, duplicate)
+    bpy.context.view_layer.update()
     assert mapped == len(source.pose.bones)
     assert unmatched == []
+    assert not source.data.bones["upper_arm.L"].use_connect
+    assert max(
+        abs(source.pose.bones["spine"].matrix[row][column] - source_bind_matrix[row][column])
+        for row in range(4)
+        for column in range(4)
+    ) < 1e-5
+    duplicate.pose.bones["spine"].location.x = 0.25
+    bpy.context.view_layer.update()
+    assert max(
+        abs(
+            source.pose.bones["spine"].matrix[row][column]
+            - duplicate.pose.bones[f"{DRIVER_BONE_PREFIX}spine"].matrix[row][column]
+        )
+        for row in range(4)
+        for column in range(4)
+    ) < 1e-5
     constraint = source.pose.bones["spine"].constraints[-1]
     assert constraint.name.startswith("Re-Rigify Drive")
     assert constraint.target == duplicate
-    assert constraint.subtarget == "spine"
-    assert constraint.owner_space == "LOCAL"
-    assert constraint.target_space == "LOCAL_OWNER_ORIENT"
+    assert constraint.subtarget == f"{DRIVER_BONE_PREFIX}spine"
+    assert constraint.owner_space == "WORLD"
+    assert constraint.target_space == "WORLD"
+    helper = duplicate.pose.bones[f"{DRIVER_BONE_PREFIX}spine"]
+    assert helper.parent == duplicate.pose.bones["spine"]
+    assert not helper.constraints
     assert remove_drive_constraints(source) == mapped
+    assert source.data.bones["upper_arm.L"].use_connect
+    duplicate.pose.bones["spine"].matrix_basis.identity()
+    bpy.context.view_layer.update()
     duplicate[DRIVE_MAP_PROPERTY] = '{"spine": "upper_arm.L"}'
     connect_source_to_rig(source, duplicate)
-    assert source.pose.bones["spine"].constraints[-1].subtarget == "upper_arm.L"
+    assert source.pose.bones["spine"].constraints[-1].subtarget == f"{DRIVER_BONE_PREFIX}spine"
+    assert duplicate.pose.bones[f"{DRIVER_BONE_PREFIX}spine"].parent == duplicate.pose.bones[
+        "upper_arm.L"
+    ]
     remove_drive_constraints(source)
     duplicate[ROTATION_DRIVE_MAP_PROPERTY] = '{"spine": "upper_arm.L"}'
     connect_source_to_rig(source, duplicate)

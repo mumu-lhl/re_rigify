@@ -199,6 +199,28 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertIn(("Ankle_offset_L", "Toe_L", True), operations)
         self.assertIn(("Ankle_offset_L", "Ankle_L", False), operations)
 
+    def test_super_head_root_is_disconnected_from_parent_rig(self):
+        parents = {
+            "Waist": None,
+            "Spine": "Waist",
+            "Chest": "Spine",
+            "Neck": "Chest",
+            "Head": "Neck",
+        }
+
+        operations = infer_rigify_topology(
+            [{"bone_name": "Neck", "rigify_type": "spines.super_head"}],
+            parents,
+        )
+
+        self.assertEqual(
+            operations,
+            [
+                ("Chest", "Neck", False),
+                ("Neck", "Head", True),
+            ],
+        )
+
     def test_mirror_parameter_value_recursively_maps_bone_names(self):
         value = {"target": "Arm_L", "nested": ["Hand_L", 3, True]}
 
