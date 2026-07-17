@@ -106,9 +106,9 @@ the generated deform segment and therefore the mapped source eyelid bone.
 
 ## Configuration format
 
-Bone entries gain an optional `compatibility` object. Existing schema-version-1
-files load with compatibility disabled. Export writes the new fields and a new
-schema version; import migrates version 1 to the new defaults.
+Bone entries gain an optional `compatibility` object while the unpublished
+format remains at schema version 1. Files without the object load with
+compatibility disabled, and export writes the normalized object.
 
 Compatibility state is included in copy, mirror, import, and export operations.
 Mirroring also mirrors eye patterns and the explicit horizontal axis.
@@ -135,7 +135,7 @@ generic generation failures.
 Pure tests cover:
 
 - Unique-chain traversal and branch rejection.
-- Compatibility serialization and version-1 migration.
+- Compatibility serialization and version-1 default handling.
 - Mirroring compatibility settings and glob patterns.
 - Eyelid landmark ordering and temporary-name/source-name mapping.
 - Forward-axis inference and ambiguous cases.

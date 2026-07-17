@@ -2,14 +2,17 @@ import unittest
 
 from re_rigify.core import (
     ConfigError,
+    DEFAULT_COMPATIBILITY,
     choose_drive_target,
     infer_rigify_topology,
+    mirror_compatibility,
     normalize_config,
     mirror_parameter_value,
     remove_collection_references,
     resolve_collection_rules,
     validate_config,
     unique_blender_name,
+    unique_child_chain,
 )
 
 
@@ -39,6 +42,71 @@ class ResolveCollectionRulesTests(unittest.TestCase):
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def test_version_one_defaults_compatibility_to_disabled(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "spine",
+                "rigify_type": "basic.super_copy",
+                "parameters": {},
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = normalize_config(payload)
+
+        self.assertEqual(result["schema_version"], 1)
+        self.assertEqual(result["bones"][0]["compatibility"], DEFAULT_COMPATIBILITY)
+
+    def test_version_one_round_trips_compatibility(self):
+        compatibility = {
+            **DEFAULT_COMPATIBILITY,
+            "force_connect_chain": True,
+            "skin_eye_compatibility": True,
+            "eye_forward_axis": "-Y",
+            "upper_lid_pattern": "Eye_up_*_L",
+            "lower_lid_pattern": "Eye_bottom_*_L",
+        }
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "Eye_L",
+                "rigify_type": "face.skin_eye",
+                "parameters": {},
+                "compatibility": compatibility,
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = normalize_config(payload)
+
+        self.assertEqual(result["bones"][0]["compatibility"], compatibility)
+
+    def test_unique_child_chain_rejects_branches(self):
+        parents = {"root": None, "a": "root", "b": "root"}
+
+        with self.assertRaisesRegex(ConfigError, "ambiguous.*a.*b"):
+            unique_child_chain("root", parents)
+
+    def test_unique_child_chain_returns_ordered_path(self):
+        parents = {"root": None, "middle": "root", "tip": "middle"}
+
+        self.assertEqual(unique_child_chain("root", parents), ["root", "middle", "tip"])
+
+    def test_mirror_compatibility_swaps_x_axis_and_patterns(self):
+        result = mirror_compatibility({
+            **DEFAULT_COMPATIBILITY,
+            "eye_forward_axis": "+X",
+            "upper_lid_pattern": "Eye_up_*_L",
+        }, lambda name: name.replace("_L", "_R"))
+
+        self.assertEqual(result["eye_forward_axis"], "-X")
+        self.assertEqual(result["upper_lid_pattern"], "Eye_up_*_R")
+
     def test_unique_blender_name_increments_numeric_suffix(self):
         names = {"Arm", "Arm.001", "Arm.003", "Leg"}
 
@@ -105,7 +173,12 @@ class ConfigValidationTests(unittest.TestCase):
         payload = {
             "format": "re-rigify",
             "schema_version": 1,
-            "bones": [{"bone_name": "spine", "rigify_type": "basic.super_copy", "parameters": {}}],
+            "bones": [{
+                "bone_name": "spine",
+                "rigify_type": "basic.super_copy",
+                "parameters": {},
+                "compatibility": DEFAULT_COMPATIBILITY,
+            }],
             "collections": [{
                 "name": "Controls",
                 "ui_title": "Main",

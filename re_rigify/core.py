@@ -11,6 +11,15 @@ from typing import Any, Iterable
 FORMAT_NAME = "re-rigify"
 SCHEMA_VERSION = 1
 
+DEFAULT_COMPATIBILITY = {
+    "force_connect_chain": False,
+    "skin_eye_compatibility": False,
+    "eye_forward_axis": "AUTO",
+    "upper_lid_pattern": "",
+    "lower_lid_pattern": "",
+    "synthetic_lids_fallback": False,
+}
+
 RIGIFY_DEFAULT_COLOR_SETS = (
     ("Root", (0.5490, 1.0, 1.0), (0.4353, 0.1843, 0.4157), (0.3140, 0.7840, 1.0)),
     ("IK", (0.5490, 1.0, 1.0), (0.6039, 0.0, 0.0), (0.3140, 0.7840, 1.0)),
@@ -64,6 +73,55 @@ def mirror_parameter_value(value: Any, name_mapper) -> Any:
     if isinstance(value, str):
         return name_mapper(value)
     return value
+
+
+def normalize_compatibility(value: object, path: str = "compatibility") -> dict[str, Any]:
+    value = _require_type(value, dict, path)
+    result = dict(DEFAULT_COMPATIBILITY)
+    for name in (
+        "force_connect_chain", "skin_eye_compatibility", "synthetic_lids_fallback",
+    ):
+        if name in value:
+            result[name] = _require_type(value[name], bool, f"{path}.{name}")
+    for name in ("upper_lid_pattern", "lower_lid_pattern"):
+        if name in value:
+            result[name] = _require_type(value[name], str, f"{path}.{name}")
+    if "eye_forward_axis" in value:
+        axis = _require_type(value["eye_forward_axis"], str, f"{path}.eye_forward_axis")
+        if axis not in {"AUTO", "+X", "-X", "+Y", "-Y"}:
+            raise ConfigError(f"{path}.eye_forward_axis is invalid")
+        result["eye_forward_axis"] = axis
+    return result
+
+
+def mirror_compatibility(value: dict[str, Any], name_mapper) -> dict[str, Any]:
+    result = normalize_compatibility(value)
+    result["upper_lid_pattern"] = name_mapper(result["upper_lid_pattern"])
+    result["lower_lid_pattern"] = name_mapper(result["lower_lid_pattern"])
+    result["eye_forward_axis"] = {
+        "+X": "-X",
+        "-X": "+X",
+    }.get(result["eye_forward_axis"], result["eye_forward_axis"])
+    return result
+
+
+def unique_child_chain(root: str, parents: dict[str, str | None]) -> list[str]:
+    if root not in parents:
+        raise ConfigError(f"bone does not exist: {root!r}")
+    children: dict[str, list[str]] = {name: [] for name in parents}
+    for child, parent in parents.items():
+        if parent:
+            children.setdefault(parent, []).append(child)
+    chain = [root]
+    while True:
+        candidates = sorted(children.get(chain[-1], ()))
+        if not candidates:
+            return chain
+        if len(candidates) > 1:
+            raise ConfigError(
+                f"{chain[-1]!r} has ambiguous child chain: {', '.join(candidates)}"
+            )
+        chain.append(candidates[0])
 
 
 def remove_collection_references(parameters: dict[str, Any], collection_name: str) -> dict[str, Any]:
@@ -185,10 +243,15 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         bone_name = _require_type(item.get("bone_name"), str, f"bones[{index}].bone_name")
         rigify_type = _require_type(item.get("rigify_type"), str, f"bones[{index}].rigify_type")
         parameters = _require_type(item.get("parameters", {}), dict, f"bones[{index}].parameters")
+        compatibility = normalize_compatibility(
+            item.get("compatibility", {}),
+            f"bones[{index}].compatibility",
+        )
         normalized_bones.append({
             "bone_name": bone_name,
             "rigify_type": rigify_type,
             "parameters": parameters,
+            "compatibility": compatibility,
         })
 
     for index, item in enumerate(collections):

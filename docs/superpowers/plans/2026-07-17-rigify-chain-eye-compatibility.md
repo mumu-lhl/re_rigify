@@ -4,7 +4,7 @@
 
 **Goal:** Generate `limbs.super_finger` and `face.skin_eye` rigs from the current production skeleton while keeping the source rest skeleton unchanged and driving its real eyelid bones.
 
-**Architecture:** Store Re-Rigify-only compatibility settings beside each bone configuration, normalize them through schema version 2, and compile them into a temporary-metarig adaptation plan. A focused `compatibility.py` module builds connected finger chains and Rigify-compatible eyelid chains, while `generate.py` applies that plan and persists explicit generated-to-source drive mappings on the generated rig.
+**Architecture:** Store Re-Rigify-only compatibility settings beside each bone configuration within the unpublished schema version 1, and compile them into a temporary-metarig adaptation plan. A focused `compatibility.py` module builds connected finger chains and Rigify-compatible eyelid chains, while `generate.py` applies that plan and persists explicit generated-to-source drive mappings on the generated rig.
 
 **Tech Stack:** Python 3, Blender 5.2 RNA/API, bundled Rigify, `unittest`, Blender MCP, Jujutsu.
 
@@ -22,14 +22,14 @@
 
 ## File Structure
 
-- `re_rigify/core.py`: schema-version migration, pure compatibility normalization, mirroring, and unique-chain traversal.
+- `re_rigify/core.py`: compatibility normalization, mirroring, and unique-chain traversal.
 - `re_rigify/compatibility.py`: Blender-specific compatibility validation, eyelid landmark planning, temporary edit-bone creation, and drive-map production.
 - `re_rigify/blender_config.py`: RNA properties and payload conversion.
 - `re_rigify/ui.py`: compatibility controls for the active bone.
 - `re_rigify/operators.py`: copy and mirror compatibility settings.
 - `re_rigify/generate.py`: apply compatibility plans and store explicit drive metadata.
 - `re_rigify/drive.py`: consume explicit mappings before name-based fallback.
-- `tests/test_core.py`: schema, migration, mirroring, and chain tests.
+- `tests/test_core.py`: schema defaults, mirroring, and chain tests.
 - `tests/test_compatibility.py`: pure landmark ordering and eye-plan tests with small vector tuples.
 - `tests/blender_integration.py`: Blender-side regression coverage.
 
@@ -50,14 +50,14 @@
 
 - [ ] **Step 1: Write failing schema and chain tests**
 
-Add tests that require version-1 migration, version-2 round trips, mirrored patterns,
+Add tests that require version-1 defaults and round trips, mirrored patterns,
 axis mirroring, unique-chain traversal, and branch rejection:
 
 ```python
 def test_version_one_migrates_with_compatibility_disabled(self):
     payload = self.valid_payload(schema_version=1)
     result = normalize_config(payload)
-    self.assertEqual(result["schema_version"], 2)
+    self.assertEqual(result["schema_version"], 1)
     self.assertEqual(result["bones"][0]["compatibility"], {
         "force_connect_chain": False,
         "skin_eye_compatibility": False,
@@ -90,12 +90,11 @@ Run:
 rtk python3 -m unittest tests.test_core -v
 ```
 
-Expected: failures for schema version 2 and missing compatibility helpers.
+Expected: failures for missing compatibility helpers.
 
-- [ ] **Step 3: Implement schema version 2 and helpers**
+- [ ] **Step 3: Implement schema version 1 compatibility helpers**
 
-Set `SCHEMA_VERSION = 2`, accept input versions 1 and 2, and normalize every bone
-to this exact shape:
+Keep `SCHEMA_VERSION = 1` and normalize every bone to this exact shape:
 
 ```python
 DEFAULT_COMPATIBILITY = {
