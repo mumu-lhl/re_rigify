@@ -136,6 +136,16 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(choose_drive_target("Arm_L", {"Arm_L"}), "Arm_L")
         self.assertIsNone(choose_drive_target("Arm_L", {"DEF-Arm_R"}))
 
+    def test_drive_target_prefers_explicit_mapping(self):
+        self.assertEqual(
+            choose_drive_target(
+                "Eye_up_01_L",
+                {"DEF-RR-lid01.T.L", "Eye_up_01_L"},
+                explicit={"Eye_up_01_L": "DEF-RR-lid01.T.L"},
+            ),
+            "DEF-RR-lid01.T.L",
+        )
+
     def test_infers_common_disconnected_arm_leg_spine_and_head_topology(self):
         parents = {
             "Spine": "Waist", "Chest": "Spine", "Neck": "Chest", "Head": "Neck",

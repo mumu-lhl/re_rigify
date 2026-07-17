@@ -8,6 +8,7 @@ import bpy
 
 from .core import ConfigError, infer_rigify_topology, resolve_collection_rules
 from .compatibility import apply_compatibility_plan, build_compatibility_plan
+from .drive import DRIVE_MAP_PROPERTY
 from .rigify_adapter import apply_parameters
 
 
@@ -171,7 +172,7 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         context.view_layer.objects.active = duplicate
         apply_rigify_topology(context, duplicate, payload["bones"])
         compatibility_plan = build_compatibility_plan(duplicate, payload["bones"])
-        apply_compatibility_plan(duplicate, compatibility_plan)
+        source_to_helper = apply_compatibility_plan(duplicate, compatibility_plan)
         bpy.ops.object.mode_set(mode="POSE")
         result = bpy.ops.pose.rigify_generate()
         if "FINISHED" not in result:
@@ -181,6 +182,16 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         result_obj = context.view_layer.objects.active
         if result_obj == duplicate and rigs:
             result_obj = rigs[-1]
+        target_names = set(result_obj.pose.bones.keys())
+        from .core import choose_drive_target
+        explicit_drive_map = {
+            source_name: target_name
+            for source_name, helper_name in source_to_helper.items()
+            if (target_name := choose_drive_target(helper_name, target_names)) is not None
+        }
+        result_obj[DRIVE_MAP_PROPERTY] = json.dumps(
+            explicit_drive_map, ensure_ascii=False, sort_keys=True,
+        )
         source.re_rigify_generated_rig = result_obj
         cleanup_metarigs(source)
         source.re_rigify_metarig = None

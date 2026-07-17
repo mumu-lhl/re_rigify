@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import json
+
 import bpy
 
 from .core import choose_drive_target
 
 
 CONSTRAINT_PREFIX = "Re-Rigify Drive"
+DRIVE_MAP_PROPERTY = "re_rigify_drive_map"
 _upgrade_enabled = False
 
 
@@ -26,10 +29,21 @@ def connect_source_to_rig(source: bpy.types.Object, rig: bpy.types.Object) -> tu
         raise ValueError("Source and generated rig must be different armature objects")
     remove_drive_constraints(source)
     target_names = set(rig.pose.bones.keys())
+    try:
+        explicit = json.loads(rig.get(DRIVE_MAP_PROPERTY, "{}"))
+        if not isinstance(explicit, dict):
+            explicit = {}
+        explicit = {
+            source_name: target_name
+            for source_name, target_name in explicit.items()
+            if isinstance(source_name, str) and isinstance(target_name, str)
+        }
+    except (TypeError, json.JSONDecodeError):
+        explicit = {}
     unmatched: list[str] = []
     mapped = 0
     for pose_bone in source.pose.bones:
-        target_name = choose_drive_target(pose_bone.name, target_names)
+        target_name = choose_drive_target(pose_bone.name, target_names, explicit)
         if target_name is None:
             unmatched.append(pose_bone.name)
             continue

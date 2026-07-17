@@ -56,8 +56,15 @@ class ValidationResult:
         return not self.errors
 
 
-def choose_drive_target(source_bone_name: str, target_bone_names: Iterable[str]) -> str | None:
+def choose_drive_target(
+    source_bone_name: str,
+    target_bone_names: Iterable[str],
+    explicit: dict[str, str] | None = None,
+) -> str | None:
     names = set(target_bone_names)
+    explicit_target = (explicit or {}).get(source_bone_name)
+    if explicit_target in names:
+        return explicit_target
     for candidate in (f"DEF-{source_bone_name}", f"ORG-{source_bone_name}", source_bone_name):
         if candidate in names:
             return candidate
