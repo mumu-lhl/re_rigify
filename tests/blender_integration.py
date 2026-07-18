@@ -249,6 +249,12 @@ try:
     flush_parameter_carrier()
     assert json.loads(rule.parameters_json)["make_control"] is False
     assert get_rule_parameter_carrier(rule_source, rule, 0) == carrier
+    manual_carrier = prepare_parameter_carrier(
+        bpy.context, rule_source, manual_root, 0,
+    )
+    assert get_parameter_carrier(rule_source, manual_root, 0) == manual_carrier
+    assert get_rule_parameter_carrier(rule_source, rule, 0) == carrier
+    assert manual_carrier.id_data != carrier.id_data
     collection = rule_settings.collections.add()
     collection.name = "Old FK"
     collection.last_valid_name = "Old FK"

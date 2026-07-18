@@ -22,6 +22,22 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_bone_and_rule_parameters_use_distinct_carriers(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        functions = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        self.assertIn("_parameter_carrier_name", functions)
+        helper_source = ast.unparse(functions["_parameter_carrier_name"])
+        self.assertIn("target_kind", helper_source)
+        self.assertIn("RULE_HELPER_NAME", helper_source)
+        refs_source = ast.unparse(functions["_active_parameter_refs"])
+        self.assertIn("_bound_bindings", refs_source)
+        self.assertIn("RULE_HELPER_NAME", refs_source)
+
     def test_rule_preview_ui_is_registered(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

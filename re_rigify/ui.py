@@ -21,11 +21,13 @@ from .rigify_adapter import (
 
 
 HELPER_NAME = "__ReRigify_Parameter_Carrier__"
+RULE_HELPER_NAME = "__ReRigify_Rule_Parameter_Carrier__"
 _bound_armature_name = None
 _bound_armature_pointer = 0
 _bound_kind = None
 _bound_key = None
 _bound_source_bone_name = None
+_bound_bindings = {}
 _pending_binding = None
 
 
@@ -42,10 +44,14 @@ def _carrier_key(source, target_kind, target_key, bone_name, rigify_type):
     )
 
 
+def _parameter_carrier_name(target_kind):
+    return RULE_HELPER_NAME if target_kind == "RULE" else HELPER_NAME
+
+
 def _get_parameter_carrier(
     source, target_kind, target_key, source_bone_name, rigify_type,
 ):
-    obj = bpy.data.objects.get(HELPER_NAME)
+    obj = bpy.data.objects.get(_parameter_carrier_name(target_kind))
     if (
         obj is None
         or obj.get("re_rigify_source")
@@ -99,19 +105,20 @@ def _prepare_parameter_carrier(
             return None
     except ReferenceError:
         return None
-    flush_parameter_carrier()
-    obj = bpy.data.objects.get(HELPER_NAME)
+    flush_parameter_carrier(target_kind)
+    helper_name = _parameter_carrier_name(target_kind)
+    obj = bpy.data.objects.get(helper_name)
     source_key = f"{source.data.name}:{len(source.data.bones)}"
     if obj is not None and (
         obj.get("re_rigify_source") != source_key
         or source_bone_name not in obj.pose.bones
     ):
-        remove_parameter_carrier()
+        _remove_parameter_carrier(target_kind)
         obj = None
     if obj is None:
         armature = source.data.copy()
-        armature.name = HELPER_NAME
-        obj = bpy.data.objects.new(HELPER_NAME, armature)
+        armature.name = helper_name
+        obj = bpy.data.objects.new(helper_name, armature)
         context.scene.collection.objects.link(obj)
         obj.hide_render = True
         obj.hide_set(True)
@@ -142,13 +149,14 @@ def _prepare_parameter_carrier(
             json.loads(target.parameters_json or "{}"),
         )
         obj["re_rigify_key"] = key
-    global _bound_armature_name, _bound_armature_pointer
-    global _bound_kind, _bound_key, _bound_source_bone_name, _pending_binding
-    _bound_armature_name = source.data.name
-    _bound_armature_pointer = source.data.as_pointer()
-    _bound_kind = target_kind
-    _bound_key = str(target_key)
-    _bound_source_bone_name = source_bone_name
+    global _pending_binding
+    _bound_bindings[target_kind] = (
+        source.data.name,
+        source.data.as_pointer(),
+        str(target_key),
+        source_bone_name,
+    )
+    _sync_legacy_binding(target_kind)
     _pending_binding = None
     return pose_bone
 
@@ -254,31 +262,76 @@ def _load_pending_parameter_carrier():
     return None
 
 
-def flush_parameter_carrier():
+def _sync_legacy_binding(preferred_kind=None):
+    global _bound_armature_name, _bound_armature_pointer
+    global _bound_kind, _bound_key, _bound_source_bone_name
+    kind = (
+        preferred_kind
+        if preferred_kind in _bound_bindings
+        else next(reversed(_bound_bindings), None)
+    )
+    if kind is None:
+        _bound_armature_name = None
+        _bound_armature_pointer = 0
+        _bound_kind = None
+        _bound_key = None
+        _bound_source_bone_name = None
+        return
+    (
+        _bound_armature_name,
+        _bound_armature_pointer,
+        _bound_key,
+        _bound_source_bone_name,
+    ) = _bound_bindings[kind]
+    _bound_kind = kind
+
+
+def _remove_parameter_carrier(target_kind):
+    obj = bpy.data.objects.get(_parameter_carrier_name(target_kind))
+    if obj:
+        data = obj.data
+        bpy.data.objects.remove(obj, do_unlink=True)
+        if data.users == 0:
+            bpy.data.armatures.remove(data)
+    _bound_bindings.pop(target_kind, None)
+    _sync_legacy_binding()
+
+
+def flush_parameter_carrier(target_kind=None):
     """Persist the active helper on explicit workflow events, without polling."""
-    armature = bpy.data.armatures.get(_bound_armature_name) if _bound_armature_name else None
-    if armature and armature.as_pointer() != _bound_armature_pointer:
-        armature = None
-    if armature is None and _bound_armature_name is not None:
-        remove_parameter_carrier()
-    elif armature is not None:
+    kinds = (
+        [target_kind]
+        if target_kind is not None
+        else list(_bound_bindings)
+    )
+    for kind in kinds:
+        binding = _bound_bindings.get(kind)
+        if binding is None:
+            continue
+        armature_name, armature_pointer, target_key, source_bone_name = binding
+        armature = bpy.data.armatures.get(armature_name)
+        if armature and armature.as_pointer() != armature_pointer:
+            armature = None
+        if armature is None:
+            _remove_parameter_carrier(kind)
+            continue
         settings = armature.re_rigify
         target = None
-        if _bound_kind == "BONE":
-            index = int(_bound_key)
+        if kind == "BONE":
+            index = int(target_key)
             if 0 <= index < len(settings.bones):
                 target = settings.bones[index]
-        elif _bound_kind == "RULE":
+        elif kind == "RULE":
             target = next(
                 (
                     rule for rule in settings.bone_rules
-                    if rule.rule_id == _bound_key
+                    if rule.rule_id == target_key
                 ),
                 None,
             )
-        helper = bpy.data.objects.get(HELPER_NAME)
+        helper = bpy.data.objects.get(_parameter_carrier_name(kind))
         carrier = (
-            helper.pose.bones.get(_bound_source_bone_name)
+            helper.pose.bones.get(source_bone_name)
             if helper and helper.pose else None
         )
         if target is not None and carrier is not None:
@@ -291,19 +344,9 @@ def _save_pre(_filepath):
 
 
 def remove_parameter_carrier():
-    global _bound_armature_name, _bound_armature_pointer
-    global _bound_kind, _bound_key, _bound_source_bone_name, _pending_binding
-    obj = bpy.data.objects.get(HELPER_NAME)
-    if obj:
-        data = obj.data
-        bpy.data.objects.remove(obj, do_unlink=True)
-        if data.users == 0:
-            bpy.data.armatures.remove(data)
-    _bound_armature_name = None
-    _bound_armature_pointer = 0
-    _bound_kind = None
-    _bound_key = None
-    _bound_source_bone_name = None
+    global _pending_binding
+    for target_kind in ("BONE", "RULE"):
+        _remove_parameter_carrier(target_kind)
     _pending_binding = None
 
 
@@ -413,14 +456,24 @@ def _active_parameter_refs(context, prop_name):
     obj = context.object
     if obj is None or obj.type != "ARMATURE":
         return None
-    if (
-        obj.data.name != _bound_armature_name
-        or obj.data.as_pointer() != _bound_armature_pointer
+    if obj.name == RULE_HELPER_NAME:
+        target_kind = "RULE"
+    elif obj.name == HELPER_NAME:
+        target_kind = "BONE"
+    else:
+        target_kind = _bound_kind
+    binding = _bound_bindings.get(target_kind)
+    if binding is None:
+        return None
+    armature_name, armature_pointer, _target_key, source_bone_name = binding
+    helper = bpy.data.objects.get(_parameter_carrier_name(target_kind))
+    if obj != helper and (
+        obj.data.name != armature_name
+        or obj.data.as_pointer() != armature_pointer
     ):
         return None
-    helper = bpy.data.objects.get(HELPER_NAME)
     carrier = (
-        helper.pose.bones.get(_bound_source_bone_name)
+        helper.pose.bones.get(source_bone_name)
         if helper and helper.pose else None
     )
     if carrier is None:
