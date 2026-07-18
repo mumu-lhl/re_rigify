@@ -6,16 +6,123 @@ from re_rigify.core import (
     choose_drive_spec,
     choose_drive_target,
     infer_rigify_topology,
+    materialize_bone_rules,
     mirror_compatibility,
     move_selected_indices,
     normalize_config,
     mirror_parameter_value,
+    rename_collection_references,
     remove_collection_references,
+    resolve_bone_rules,
     resolve_collection_rules,
     validate_config,
     unique_blender_name,
     unique_child_chain,
 )
+
+
+class BoneRuleTests(unittest.TestCase):
+    @staticmethod
+    def valid_payload():
+        return {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "spine",
+                "rigify_type": "basic.raw_copy",
+                "chain_bones": [],
+                "parameters": {},
+                "compatibility": DEFAULT_COMPATIBILITY,
+            }],
+            "collections": [{
+                "name": "Controls",
+                "ui_title": "Controls",
+                "ui_row": 1,
+                "row_order": 0,
+                "color_set": "",
+                "rules": [],
+            }],
+            "color_sets": [],
+        }
+
+    def test_schema_defaults_rules_and_visibility(self):
+        result = normalize_config(self.valid_payload())
+
+        self.assertEqual(result["bone_rules"], [])
+        self.assertTrue(result["collections"][0]["visible_after_generation"])
+
+    def test_later_rule_wins_and_result_follows_bone_order(self):
+        rules = [
+            {
+                "rule_id": "all-fingers", "kind": "GLOB", "pattern": "Finger_*",
+                "rigify_type": "limbs.super_finger",
+                "parameters": {"segments": 2},
+            },
+            {
+                "rule_id": "index", "kind": "EXACT", "pattern": "Finger_Index",
+                "rigify_type": "basic.super_copy",
+                "parameters": {"make_control": True},
+            },
+        ]
+
+        result = resolve_bone_rules(
+            ["Root", "Finger_Index", "Finger_Middle"], rules,
+        )
+
+        self.assertEqual(list(result), ["Finger_Index", "Finger_Middle"])
+        self.assertEqual(result["Finger_Index"]["rule_id"], "index")
+        self.assertEqual(result["Finger_Middle"]["rule_id"], "all-fingers")
+
+    def test_rule_with_no_match_is_rejected(self):
+        with self.assertRaisesRegex(ConfigError, "matched no bones"):
+            resolve_bone_rules(
+                ["Root"],
+                [{
+                    "rule_id": "missing", "kind": "GLOB", "pattern": "Finger_*",
+                    "rigify_type": "basic.super_copy", "parameters": {},
+                }],
+            )
+
+    def test_materialization_overrides_manual_rows_and_appends_new_matches(self):
+        payload = self.valid_payload()
+        payload["bones"][0]["bone_name"] = "Finger_Index"
+        payload["bone_rules"] = [{
+            "rule_id": "fingers", "kind": "GLOB", "pattern": "Finger_*",
+            "rigify_type": "basic.super_copy",
+            "parameters": {"make_control": False},
+        }]
+
+        result = materialize_bone_rules(
+            payload, ["Root", "Finger_Index", "Finger_Middle"],
+        )
+
+        self.assertEqual(
+            [item["bone_name"] for item in result["bones"]],
+            ["Finger_Index", "Finger_Middle"],
+        )
+        self.assertTrue(all(
+            item["rigify_type"] == "basic.super_copy"
+            and item["parameters"] == {"make_control": False}
+            for item in result["bones"]
+        ))
+
+    def test_rename_updates_only_collection_reference_lists(self):
+        parameters = {
+            "fk_coll_refs": ["Old", "Other"],
+            "tweak_coll_refs": ["Old"],
+            "ordinary_list": ["Old"],
+            "label": "Old",
+        }
+
+        self.assertEqual(
+            rename_collection_references(parameters, "Old", "New"),
+            {
+                "fk_coll_refs": ["New", "Other"],
+                "tweak_coll_refs": ["New"],
+                "ordinary_list": ["Old"],
+                "label": "Old",
+            },
+        )
 
 
 class MoveSelectedIndicesTests(unittest.TestCase):
@@ -405,12 +512,14 @@ class ConfigValidationTests(unittest.TestCase):
                 "parameters": {},
                 "compatibility": DEFAULT_COMPATIBILITY,
             }],
+            "bone_rules": [],
             "collections": [{
                 "name": "Controls",
                 "ui_title": "Main",
                 "ui_row": 1,
                 "row_order": 0,
                 "color_set": "FK",
+                "visible_after_generation": True,
                 "rules": [{"kind": "EXACT", "pattern": "spine"}],
             }],
             "color_sets": [{

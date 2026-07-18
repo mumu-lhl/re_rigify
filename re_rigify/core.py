@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
 import re
@@ -192,6 +193,75 @@ def remove_collection_references(parameters: dict[str, Any], collection_name: st
     return result
 
 
+def rename_collection_references(
+    parameters: dict[str, Any],
+    old_name: str,
+    new_name: str,
+) -> dict[str, Any]:
+    result = dict(parameters)
+    for name, value in parameters.items():
+        if name.endswith("_coll_refs") and isinstance(value, list):
+            result[name] = [
+                new_name if item == old_name else item for item in value
+            ]
+    return result
+
+
+def resolve_bone_rules(
+    bone_names: Iterable[str],
+    rules: Iterable[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    names = list(bone_names)
+    winners: dict[str, dict[str, Any]] = {}
+    for rule in rules:
+        if rule["kind"] == "EXACT":
+            matches = [rule["pattern"]] if rule["pattern"] in names else []
+        else:
+            matches = [
+                name for name in names if fnmatchcase(name, rule["pattern"])
+            ]
+        if not matches:
+            raise ConfigError(
+                f"{rule['kind']} bone rule {rule['pattern']!r} matched no bones"
+            )
+        for name in matches:
+            winners[name] = rule
+    return {name: winners[name] for name in names if name in winners}
+
+
+def materialize_bone_rules(
+    payload: dict[str, Any],
+    bone_names: Iterable[str],
+) -> dict[str, Any]:
+    config = normalize_config(payload)
+    names = list(bone_names)
+    winners = resolve_bone_rules(names, config["bone_rules"])
+    resolved = []
+    seen = set()
+    for item in config["bones"]:
+        name = item["bone_name"]
+        seen.add(name)
+        rule = winners.get(name)
+        resolved.append({
+            "bone_name": name,
+            "rigify_type": rule["rigify_type"],
+            "chain_bones": [],
+            "parameters": deepcopy(rule["parameters"]),
+            "compatibility": deepcopy(DEFAULT_COMPATIBILITY),
+        } if rule else item)
+    for name in names:
+        if name in winners and name not in seen:
+            rule = winners[name]
+            resolved.append({
+                "bone_name": name,
+                "rigify_type": rule["rigify_type"],
+                "chain_bones": [],
+                "parameters": deepcopy(rule["parameters"]),
+                "compatibility": deepcopy(DEFAULT_COMPATIBILITY),
+            })
+    return {**config, "bones": resolved}
+
+
 def infer_rigify_topology(
     bone_configs: Iterable[dict[str, Any]], parents: dict[str, str | None]
 ) -> list[tuple[str, str, bool]]:
@@ -301,9 +371,11 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         raise ConfigError(f"unsupported schema_version: {payload.get('schema_version')!r}")
 
     bones = _require_type(payload.get("bones"), list, "bones")
+    bone_rules = _require_type(payload.get("bone_rules", []), list, "bone_rules")
     collections = _require_type(payload.get("collections"), list, "collections")
     color_sets = _require_type(payload.get("color_sets", []), list, "color_sets")
     normalized_bones: list[dict[str, Any]] = []
+    normalized_bone_rules: list[dict[str, Any]] = []
     normalized_collections: list[dict[str, Any]] = []
     normalized_color_sets: list[dict[str, Any]] = []
 
@@ -333,6 +405,37 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             "compatibility": compatibility,
         })
 
+    for index, item in enumerate(bone_rules):
+        item = _require_type(item, dict, f"bone_rules[{index}]")
+        rule_id = _require_type(
+            item.get("rule_id"), str, f"bone_rules[{index}].rule_id",
+        )
+        kind = _require_type(
+            item.get("kind"), str, f"bone_rules[{index}].kind",
+        )
+        pattern = _require_type(
+            item.get("pattern"), str, f"bone_rules[{index}].pattern",
+        )
+        rigify_type = _require_type(
+            item.get("rigify_type"), str, f"bone_rules[{index}].rigify_type",
+        )
+        parameters = _require_type(
+            item.get("parameters", {}), dict, f"bone_rules[{index}].parameters",
+        )
+        if not rule_id:
+            raise ConfigError(f"bone_rules[{index}].rule_id is empty")
+        if kind not in {"EXACT", "GLOB"}:
+            raise ConfigError(f"bone_rules[{index}].kind is invalid")
+        if not pattern:
+            raise ConfigError(f"bone_rules[{index}].pattern is empty")
+        normalized_bone_rules.append({
+            "rule_id": rule_id,
+            "kind": kind,
+            "pattern": pattern,
+            "rigify_type": rigify_type,
+            "parameters": parameters,
+        })
+
     for index, item in enumerate(collections):
         item = _require_type(item, dict, f"collections[{index}]")
         name = _require_type(item.get("name"), str, f"collections[{index}].name")
@@ -340,6 +443,11 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         ui_row = _require_type(item.get("ui_row", 0), int, f"collections[{index}].ui_row")
         row_order = _require_type(item.get("row_order", 0), int, f"collections[{index}].row_order")
         color_set = _require_type(item.get("color_set", ""), str, f"collections[{index}].color_set")
+        visible_after_generation = _require_type(
+            item.get("visible_after_generation", True),
+            bool,
+            f"collections[{index}].visible_after_generation",
+        )
         if ui_row < 0 or row_order < 0:
             raise ConfigError(f"collections[{index}] row values must be non-negative")
         rules = _require_type(item.get("rules", []), list, f"collections[{index}].rules")
@@ -360,6 +468,7 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             "ui_row": ui_row,
             "row_order": row_order,
             "color_set": color_set,
+            "visible_after_generation": visible_after_generation,
             "rules": normalized_rules,
         })
 
@@ -388,6 +497,7 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         "format": FORMAT_NAME,
         "schema_version": SCHEMA_VERSION,
         "bones": normalized_bones,
+        "bone_rules": normalized_bone_rules,
         "collections": normalized_collections,
         "color_sets": normalized_color_sets,
     }
@@ -435,6 +545,26 @@ def validate_config(
     seen_color_sets: set[str] = set()
     occupied_slots: set[tuple[int, int]] = set()
 
+    def validate_collection_refs(owner, parameters):
+        for parameter, references in parameters.items():
+            if not parameter.endswith("_coll_refs"):
+                continue
+            if (
+                not isinstance(references, list)
+                or any(not isinstance(ref, str) for ref in references)
+            ):
+                errors.append(
+                    f"{owner} parameter {parameter!r} must be a list "
+                    "of collection names"
+                )
+                continue
+            for reference in references:
+                if reference not in managed_collection_names:
+                    errors.append(
+                        f"{owner} parameter {parameter!r} references unknown "
+                        f"managed collection: {reference!r}"
+                    )
+
     for item in config["color_sets"]:
         name = item["name"]
         if not name:
@@ -443,7 +573,24 @@ def validate_config(
             errors.append(f"duplicate color set: {name!r}")
         seen_color_sets.add(name)
 
-    for item in config["bones"]:
+    seen_rule_ids = set()
+    for rule in config["bone_rules"]:
+        if rule["rule_id"] in seen_rule_ids:
+            errors.append(f"duplicate bone rule id: {rule['rule_id']!r}")
+        seen_rule_ids.add(rule["rule_id"])
+        if rule["rigify_type"] not in rig_types:
+            errors.append(f"Rigify type is unavailable: {rule['rigify_type']!r}")
+        validate_collection_refs(
+            f"bone rule {rule['pattern']!r}", rule["parameters"],
+        )
+
+    try:
+        effective = materialize_bone_rules(config, names)
+    except ConfigError as exc:
+        errors.append(str(exc))
+        effective = config
+
+    for item in effective["bones"]:
         name = item["bone_name"]
         if name in seen_bones:
             errors.append(f"duplicate bone configuration: {name!r}")
@@ -479,20 +626,7 @@ def validate_config(
                 errors.append(
                     f"bone {name!r} explicit chain requires at least {minimum} bones"
                 )
-        for parameter, references in item["parameters"].items():
-            if not parameter.endswith("_coll_refs"):
-                continue
-            if not isinstance(references, list) or any(not isinstance(ref, str) for ref in references):
-                errors.append(
-                    f"bone {name!r} parameter {parameter!r} must be a list of collection names"
-                )
-                continue
-            for reference in references:
-                if reference not in managed_collection_names:
-                    errors.append(
-                        f"bone {name!r} parameter {parameter!r} references unknown managed "
-                        f"collection: {reference!r}"
-                    )
+        validate_collection_refs(f"bone {name!r}", item["parameters"])
 
     for item in config["collections"]:
         name = item["name"]
