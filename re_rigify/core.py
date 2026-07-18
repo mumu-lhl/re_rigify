@@ -40,6 +40,29 @@ RIGIFY_DEFAULT_COLOR_SETS = (
 )
 
 
+def move_selected_indices(
+    item_count: int,
+    selected_indices: Iterable[int],
+    direction: int,
+) -> tuple[tuple[int, int], ...]:
+    if direction not in {-1, 1}:
+        raise ValueError("direction must be -1 or 1")
+    selected = {
+        index for index in selected_indices
+        if 0 <= index < item_count
+    }
+    operations = []
+    ordered = sorted(selected, reverse=direction > 0)
+    for source in ordered:
+        target = source + direction
+        if not 0 <= target < item_count or target in selected:
+            continue
+        operations.append((source, target))
+        selected.remove(source)
+        selected.add(target)
+    return tuple(operations)
+
+
 class ConfigError(ValueError):
     pass
 

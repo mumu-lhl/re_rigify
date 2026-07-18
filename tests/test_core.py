@@ -7,6 +7,7 @@ from re_rigify.core import (
     choose_drive_target,
     infer_rigify_topology,
     mirror_compatibility,
+    move_selected_indices,
     normalize_config,
     mirror_parameter_value,
     remove_collection_references,
@@ -15,6 +16,47 @@ from re_rigify.core import (
     unique_blender_name,
     unique_child_chain,
 )
+
+
+class MoveSelectedIndicesTests(unittest.TestCase):
+    @staticmethod
+    def apply(values, operations):
+        values = list(values)
+        for source, target in operations:
+            values.insert(target, values.pop(source))
+        return values
+
+    def test_moves_contiguous_block_up_without_reversing(self):
+        operations = move_selected_indices(4, {1, 2}, -1)
+
+        self.assertEqual(
+            self.apply(["A", "B", "C", "D"], operations),
+            ["B", "C", "A", "D"],
+        )
+
+    def test_moves_contiguous_block_down_without_reversing(self):
+        operations = move_selected_indices(4, {1, 2}, 1)
+
+        self.assertEqual(
+            self.apply(["A", "B", "C", "D"], operations),
+            ["A", "D", "B", "C"],
+        )
+
+    def test_moves_separated_rows_one_step_without_compacting(self):
+        operations = move_selected_indices(5, {1, 3}, -1)
+
+        self.assertEqual(
+            self.apply(["A", "B", "C", "D", "E"], operations),
+            ["B", "A", "D", "C", "E"],
+        )
+
+    def test_boundary_blocks_do_not_move(self):
+        self.assertEqual(move_selected_indices(4, {0, 1}, -1), ())
+        self.assertEqual(move_selected_indices(4, {2, 3}, 1), ())
+
+    def test_rejects_invalid_direction(self):
+        with self.assertRaisesRegex(ValueError, "direction"):
+            move_selected_indices(4, {1}, 0)
 
 
 class ResolveCollectionRulesTests(unittest.TestCase):
