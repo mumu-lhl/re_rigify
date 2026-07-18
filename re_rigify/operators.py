@@ -21,6 +21,7 @@ from .blender_config import (
 from .core import (
     ConfigError,
     RIGIFY_DEFAULT_COLOR_SETS,
+    materialize_bone_rules,
     mirror_compatibility,
     mirror_parameter_value,
     move_selected_indices,
@@ -80,16 +81,14 @@ def _normalize_collection_orders(settings):
 
 
 def validate_active(context):
-    from .ui import flush_parameter_carrier
-    flush_parameter_carrier()
     obj = active_armature(context)
     if not obj:
         return None, ("Select an armature object",)
     if not is_rigify_enabled():
         return obj, ("Rigify is not enabled",)
     try:
-        payload = armature_to_payload(obj.data)
-    except (ValueError, json.JSONDecodeError) as exc:
+        payload = synchronized_payload(obj, include_managed=True)
+    except (ConfigError, ValueError, json.JSONDecodeError) as exc:
         return obj, (f"Invalid stored parameter JSON: {exc}",)
     result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
     errors = list(result.errors)
@@ -98,6 +97,18 @@ def validate_active(context):
     if not errors:
         errors.extend(validate_bone_parameters(context, obj, payload["bones"], payload["collections"]))
     return obj, tuple(errors)
+
+
+def synchronized_payload(obj, include_managed=True):
+    from .rules import sync_bone_rules
+    from .ui import flush_parameter_carrier, remove_parameter_carrier
+
+    flush_parameter_carrier()
+    remove_parameter_carrier()
+    sync_bone_rules(obj.data)
+    return armature_to_payload(
+        obj.data, include_managed=include_managed,
+    )
 
 
 class RERIGIFY_OT_BoneAdd(bpy.types.Operator):
@@ -940,7 +951,11 @@ class RERIGIFY_OT_Export(bpy.types.Operator, ExportHelper):
             self.report({"ERROR"}, "Fix validation errors before exporting")
             return {"CANCELLED"}
         Path(self.filepath).write_text(
-            json.dumps(armature_to_payload(obj.data), ensure_ascii=False, indent=2) + "\n",
+            json.dumps(
+                synchronized_payload(obj, include_managed=False),
+                ensure_ascii=False,
+                indent=2,
+            ) + "\n",
             encoding="utf-8",
         )
         return {"FINISHED"}
@@ -960,15 +975,20 @@ class RERIGIFY_OT_Import(bpy.types.Operator, ImportHelper):
         try:
             payload = json.loads(Path(self.filepath).read_text(encoding="utf-8"))
             payload = normalize_config(payload)
+            resolved = materialize_bone_rules(
+                payload, obj.data.bones.keys(),
+            )
         except (OSError, json.JSONDecodeError, ConfigError) as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
         result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
         errors = list(result.errors)
         if not errors:
-            errors.extend(validate_compatibility(obj, payload["bones"]))
+            errors.extend(validate_compatibility(obj, resolved["bones"]))
         if not errors:
-            errors.extend(validate_bone_parameters(context, obj, payload["bones"], payload["collections"]))
+            errors.extend(validate_bone_parameters(
+                context, obj, resolved["bones"], resolved["collections"],
+            ))
         if errors:
             obj.data.re_rigify.validation_message = "\n".join(errors)
             self.report({"ERROR"}, f"Import rejected with {len(errors)} error(s)")
@@ -989,7 +1009,10 @@ class RERIGIFY_OT_Generate(bpy.types.Operator):
             self.report({"ERROR"}, "Fix validation errors before generating")
             return {"CANCELLED"}
         try:
-            generated = generate_rig(context, obj, armature_to_payload(obj.data))
+            generated = generate_rig(
+                context, obj,
+                synchronized_payload(obj, include_managed=True),
+            )
             mapped, unmatched = connect_source_to_rig(obj, generated)
         except Exception as exc:
             self.report({"ERROR"}, f"Rigify generation failed: {exc}")

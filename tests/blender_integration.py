@@ -16,7 +16,11 @@ from re_rigify.generate import (
     generate_rig,
     validate_bone_parameters,
 )
-from re_rigify.operators import select_only
+from re_rigify.operators import (
+    select_only,
+    synchronized_payload,
+    validate_active,
+)
 from re_rigify.rules import sync_bone_rules
 from re_rigify.drive import (
     DRIVE_MAP_PROPERTY,
@@ -183,6 +187,8 @@ try:
     ])
     assert visible.is_visible
     assert not hidden.is_visible
+    rule.rigify_type = "basic.raw_copy"
+    rule.parameters_json = "{}"
     rule_settings.bones[0].collection_selected = True
     rule_settings.active_bone_index = 0
     rule.pattern = "Finger_Index"
@@ -191,11 +197,28 @@ try:
     active_rule_bone = rule_settings.bones[rule_settings.active_bone_index]
     assert active_rule_bone.bone_name == "Finger_Index"
     assert active_rule_bone.collection_selected
-    canonical = armature_to_payload(rule_source.data, include_managed=False)
-    resolved = armature_to_payload(rule_source.data, include_managed=True)
+    checked, errors = validate_active(bpy.context)
+    assert checked == rule_source
+    assert not errors
+    assert any(item.managed_rule_id for item in rule_settings.bones)
+    canonical = synchronized_payload(rule_source, include_managed=False)
+    resolved = synchronized_payload(rule_source, include_managed=True)
     assert not canonical["bones"]
     assert [item["bone_name"] for item in resolved["bones"]] == ["Finger_Index"]
     assert canonical["bone_rules"][0]["rule_id"] == "fingers"
+    rule_import = make_armature(
+        "Rule Import", ["Root", "Finger_Index", "Finger_Middle"],
+    )
+    payload_to_armature(rule_import.data, canonical)
+    assert [
+        item.bone_name for item in rule_import.data.re_rigify.bones
+        if item.managed_rule_id
+    ] == ["Finger_Index"]
+    rule_import_data = rule_import.data
+    bpy.data.objects.remove(rule_import, do_unlink=True)
+    bpy.data.armatures.remove(rule_import_data)
+    bpy.context.view_layer.objects.active = rule_source
+    rule_source.select_set(True)
     rule_data = rule_source.data
     bpy.data.objects.remove(rule_source, do_unlink=True)
     bpy.data.armatures.remove(rule_data)

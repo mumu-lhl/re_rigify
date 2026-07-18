@@ -21,6 +21,10 @@ The mirror command processes every checked configuration at once; if none are ch
 
 The bone list arrows move all checked configurations by one position while preserving their relative order. With no checked rows, they move only the active configuration. Preset export preserves the displayed order.
 
+**Bone Matching Rules** apply one Rigify type and one native parameter set to every exact or case-sensitive Glob match. Rules run from top to bottom, and the last matching rule wins. **Sync Bone Matching Rules** updates the bone list manually; validation, import, export, and generation synchronize automatically. Materialized rows are locked for type, parameters, chain, and compatibility, but remain selectable, reorderable, and usable in collection membership. Export stores the canonical rules and manual rows rather than duplicating rule-managed rows.
+
+Renaming a configured bone collection updates every matching `*_coll_refs` entry in both manual bone and bone-rule parameters. Removing a collection removes those references. Each collection also has a **Visible After Generation** switch that controls the resulting Rigify collection state.
+
 Parameter synchronization is event-driven: it runs when switching entries, mirroring, validating, importing/exporting, generating, saving the blend file, or disabling the extension. There is no recurring polling timer.
 
 After generation, Re-Rigify automatically keeps the original mesh binding and adds world-space drive constraints to the original armature through generated adapter bones. Each adapter preserves the source rest transform while inheriting the chosen Rigify target, so differently oriented or differently parented skeletons stay in bind pose and follow the controls correctly. Targets are resolved in `DEF-name`, `ORG-name`, then same-name order unless generation provides an explicit mapping. The panel shows the internally linked rig and can remove only constraints and adapter bones created by Re-Rigify; regenerating reconnects them automatically.
@@ -29,4 +33,4 @@ The source armature keeps a link to its generated rig. Every generation creates 
 
 Configured-bone rows use checkboxes for batch selection. Both **Add to Collection** and the collection-rule `+` add every checked bone; if none are checked they use the active list item. New collection configurations start on Rigify UI row 1; if an older configuration leaves every collection on row 0, generation promotes the first collection to row 1 on the metarig copy because Rigify requires at least one UI collection button.
 
-Configuration import and export use versioned UTF-8 JSON. Schema version 1 includes the optional `chain_bones` list and defaults it to an empty list when absent. Imports are rejected as a whole when bone names, Rigify types, explicit chains, collection slots, or match rules are invalid.
+Configuration import and export use versioned UTF-8 JSON. Schema version 1 includes optional `chain_bones`, persistent bone rules, collection visibility, and native Rigify collection-reference lists. Missing values receive backward-compatible defaults. Imports are rejected as a whole when bone names, Rigify types, explicit chains, collection slots, or match rules are invalid.
