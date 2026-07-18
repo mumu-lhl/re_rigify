@@ -19,6 +19,8 @@ Use **Mirror Configuration to Opposite Side** after configuring one side. Rigify
 
 The mirror command processes every checked configuration at once; if none are checked it mirrors only the active row. Do not check both sides of the same pair. **Copy Parameters to Selected Same Type** uses the active row as the source and copies its parameters to all checked rows with the same Rigify type, which is useful for finger roots and other repeated rigs.
 
+The bone list arrows move all checked configurations by one position while preserving their relative order. With no checked rows, they move only the active configuration. Preset export preserves the displayed order.
+
 Parameter synchronization is event-driven: it runs when switching entries, mirroring, validating, importing/exporting, generating, saving the blend file, or disabling the extension. There is no recurring polling timer.
 
 After generation, Re-Rigify automatically keeps the original mesh binding and adds world-space drive constraints to the original armature through generated adapter bones. Each adapter preserves the source rest transform while inheriting the chosen Rigify target, so differently oriented or differently parented skeletons stay in bind pose and follow the controls correctly. Targets are resolved in `DEF-name`, `ORG-name`, then same-name order unless generation provides an explicit mapping. The panel shows the internally linked rig and can remove only constraints and adapter bones created by Re-Rigify; regenerating reconnects them automatically.

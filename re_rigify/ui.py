@@ -301,6 +301,10 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
         buttons = row.column(align=True)
         buttons.operator("re_rigify.bone_add", text="", icon="ADD")
         buttons.operator("re_rigify.bone_remove", text="", icon="REMOVE")
+        up = buttons.operator("re_rigify.bone_move", text="", icon="TRIA_UP")
+        up.direction = -1
+        down = buttons.operator("re_rigify.bone_move", text="", icon="TRIA_DOWN")
+        down.direction = 1
         row = layout.row(align=True)
         op = row.operator("re_rigify.mark_all_bones", text="All")
         op.selected = True

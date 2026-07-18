@@ -70,6 +70,31 @@ try:
     assert [item.bone_name for item in batch.data.re_rigify.bones] == ["one", "three", "two"]
     assert batch.data.re_rigify.active_bone_index == 2
     bpy.ops.object.mode_set(mode="OBJECT")
+
+    batch_settings = batch.data.re_rigify
+    batch_settings.bones[1].collection_selected = True
+    batch_settings.bones[2].collection_selected = True
+    batch_settings.active_bone_index = 2
+    assert bpy.ops.re_rigify.bone_move(direction=-1) == {"FINISHED"}
+    assert [item.bone_name for item in batch_settings.bones] == ["three", "two", "one"]
+    assert batch_settings.active_bone_index == 1
+    assert [item.collection_selected for item in batch_settings.bones] == [True, True, False]
+
+    assert bpy.ops.re_rigify.bone_move(direction=1) == {"FINISHED"}
+    assert [item.bone_name for item in batch_settings.bones] == ["one", "three", "two"]
+    assert batch_settings.active_bone_index == 2
+
+    for item in batch_settings.bones:
+        item.collection_selected = False
+    assert bpy.ops.re_rigify.bone_move(direction=-1) == {"FINISHED"}
+    assert [item.bone_name for item in batch_settings.bones] == ["one", "two", "three"]
+    assert batch_settings.active_bone_index == 1
+    assert get_parameter_carrier(
+        batch,
+        batch_settings.bones[1],
+        1,
+    ) is not None
+
     batch_data = batch.data
     bpy.data.objects.remove(batch, do_unlink=True)
     bpy.data.armatures.remove(batch_data)

@@ -23,6 +23,7 @@ from .core import (
     RIGIFY_DEFAULT_COLOR_SETS,
     mirror_compatibility,
     mirror_parameter_value,
+    move_selected_indices,
     normalize_config,
     remove_collection_references,
     unique_blender_name,
@@ -178,6 +179,56 @@ class RERIGIFY_OT_BoneRemove(bpy.types.Operator):
         if settings.bones:
             settings.bones.remove(settings.active_bone_index)
             settings.active_bone_index = min(settings.active_bone_index, len(settings.bones) - 1)
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_BoneMove(bpy.types.Operator):
+    bl_idname = "re_rigify.bone_move"
+    bl_label = "Move Bone Configuration"
+    bl_description = "Move checked configurations, or the active configuration if none are checked"
+    bl_options = {"UNDO"}
+
+    direction: IntProperty()
+
+    def execute(self, context):
+        from .ui import (
+            flush_parameter_carrier,
+            prepare_parameter_carrier,
+            remove_parameter_carrier,
+        )
+
+        obj = active_armature(context)
+        if obj is None:
+            return {"CANCELLED"}
+        settings = obj.data.re_rigify
+        if not settings.bones:
+            return {"CANCELLED"}
+        selected = {
+            index for index, item in enumerate(settings.bones)
+            if item.collection_selected
+        }
+        if not selected:
+            selected = {settings.active_bone_index}
+        operations = move_selected_indices(
+            len(settings.bones), selected, self.direction,
+        )
+        if not operations:
+            return {"CANCELLED"}
+
+        active_name = settings.bones[settings.active_bone_index].bone_name
+        flush_parameter_carrier()
+        remove_parameter_carrier()
+        with suspend_carrier_updates():
+            for source, target in operations:
+                settings.bones.move(source, target)
+            settings.active_bone_index = next(
+                index for index, item in enumerate(settings.bones)
+                if item.bone_name == active_name
+            )
+        active_index = settings.active_bone_index
+        prepare_parameter_carrier(
+            context, obj, settings.bones[active_index], active_index,
+        )
         return {"FINISHED"}
 
 
@@ -854,7 +905,7 @@ class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
 
 
 CLASSES = (
-    RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove,
+    RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove, RERIGIFY_OT_BoneMove,
     RERIGIFY_OT_ChainAddSelected, RERIGIFY_OT_ChainRemove, RERIGIFY_OT_ChainMove,
     RERIGIFY_OT_MirrorBoneConfig, RERIGIFY_OT_CopyParametersToSelected,
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,

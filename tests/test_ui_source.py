@@ -22,6 +22,19 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_bone_move_operator_and_buttons_are_registered(self):
+        operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
+        operator_tree = ast.parse(operator_source)
+        operator_classes = {
+            node.name for node in operator_tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertIn("RERIGIFY_OT_BoneMove", operator_classes)
+
+        ui_source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        self.assertEqual(ui_source.count('"re_rigify.bone_move"'), 2)
+        self.assertIn('icon="TRIA_UP"', ui_source)
+        self.assertIn('icon="TRIA_DOWN"', ui_source)
+
     def test_save_flushes_and_removes_parameter_carrier(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)
