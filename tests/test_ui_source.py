@@ -22,6 +22,34 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_chain_rule_drive_helpers_disable_scale_inheritance(self):
+        source = Path("re_rigify/drive.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        functions = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        self.assertIn("_chain_rule_bone_names", functions)
+        helper_builder = functions["_build_drive_helpers"]
+        assignments = [
+            node
+            for node in ast.walk(helper_builder)
+            if (
+                isinstance(node, ast.Assign)
+                and any(
+                    isinstance(target, ast.Attribute)
+                    and target.attr == "inherit_scale"
+                    for target in node.targets
+                )
+            )
+        ]
+        self.assertTrue(assignments)
+        self.assertTrue(any(
+            isinstance(node, ast.Constant) and node.value == "NONE"
+            for node in ast.walk(assignments[0].value)
+        ))
+
     def test_bone_rule_rna_and_sync_module_exist(self):
         source = Path("re_rigify/blender_config.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

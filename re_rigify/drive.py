@@ -186,6 +186,26 @@ def remove_drive_helpers(rig: bpy.types.Object | None) -> int:
     return removed
 
 
+def _chain_rule_bone_names(source: bpy.types.Object) -> set[str]:
+    settings = getattr(source.data, "re_rigify", None)
+    if settings is None:
+        return set()
+    chain_rule_ids = {
+        rule.rule_id
+        for rule in settings.bone_rules
+        if rule.apply_as_chain and rule.rule_id
+    }
+    return {
+        bone_name
+        for item in settings.bones
+        if item.managed_rule_id in chain_rule_ids
+        for bone_name in (
+            [entry.bone_name for entry in item.chain_bones]
+            or [item.bone_name]
+        )
+    }
+
+
 def _build_drive_helpers(
     source: bpy.types.Object,
     rig: bpy.types.Object,
@@ -198,6 +218,7 @@ def _build_drive_helpers(
     context = bpy.context
     previous_active, previous_selected, previous_mode = _context_state()
     helper_names: dict[str, str] = {}
+    chain_rule_bones = _chain_rule_bone_names(source)
     source_to_rig = rig.matrix_world.inverted_safe() @ source.matrix_world
     try:
         if context.object and context.object.mode != "OBJECT":
@@ -221,6 +242,9 @@ def _build_drive_helpers(
             helper.parent = rig.data.edit_bones[target_name]
             helper.use_connect = False
             helper.use_deform = False
+            helper.inherit_scale = (
+                "NONE" if source_name in chain_rule_bones else "FULL"
+            )
             helper_names[source_name] = helper.name
 
         _set_object_mode(rig, "OBJECT")

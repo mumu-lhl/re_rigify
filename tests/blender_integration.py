@@ -416,6 +416,12 @@ try:
     assert {bone.name for bone in collection.bones} == {"upper_arm.L", "upper_arm.R"}
 
     source_bind_matrix = source.pose.bones["spine"].matrix.copy()
+    chain_drive_rule = settings.bone_rules.add()
+    chain_drive_rule.rule_id = "drive-chain"
+    chain_drive_rule.apply_as_chain = True
+    settings.bones[0].managed_rule_id = chain_drive_rule.rule_id
+    chain_entry = settings.bones[0].chain_bones.add()
+    chain_entry.bone_name = "spine"
     mapped, unmatched = connect_source_to_rig(source, duplicate)
     bpy.context.view_layer.update()
     assert mapped == len(source.pose.bones)
@@ -444,6 +450,11 @@ try:
     assert constraint.target_space == "WORLD"
     helper = duplicate.pose.bones[f"{DRIVER_BONE_PREFIX}spine"]
     assert helper.parent == duplicate.pose.bones["spine"]
+    assert duplicate.data.bones[helper.name].inherit_scale == "NONE"
+    assert (
+        duplicate.data.bones[f"{DRIVER_BONE_PREFIX}upper_arm.L"].inherit_scale
+        == "FULL"
+    )
     assert not helper.constraints
     for obj in bpy.context.selected_objects:
         obj.select_set(False)
