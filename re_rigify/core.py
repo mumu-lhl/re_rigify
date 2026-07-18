@@ -201,6 +201,13 @@ def infer_rigify_topology(
     for config in bone_configs:
         root = config["bone_name"]
         rig_type = config["rigify_type"]
+        explicit_chain = config.get("chain_bones", [])
+        if explicit_chain:
+            operations.extend(
+                (parent, child, True)
+                for parent, child in zip(explicit_chain, explicit_chain[1:])
+            )
+            continue
         if rig_type == "limbs.arm":
             lower = find(root, ("elbow", "forearm", "lower_arm"))
             hand = find(lower, ("wrist", "hand")) if lower else None

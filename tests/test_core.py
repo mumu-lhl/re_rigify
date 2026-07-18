@@ -300,6 +300,29 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertIn(("Ankle_offset_L", "Toe_L", True), operations)
         self.assertIn(("Ankle_offset_L", "Ankle_L", False), operations)
 
+    def test_explicit_spine_chain_overrides_source_parenting(self):
+        parents = {
+            "Position": None,
+            "Hip": "Position",
+            "UpBody_Ctrl": "Hip",
+            "Waist": "UpBody_Ctrl",
+            "Spine": "Waist",
+            "Chest": "Spine",
+        }
+        configs = [{
+            "bone_name": "Hip",
+            "rigify_type": "spines.basic_spine",
+            "chain_bones": ["Hip", "Waist", "Spine", "Chest"],
+        }]
+
+        operations = infer_rigify_topology(configs, parents)
+
+        self.assertEqual(operations, [
+            ("Hip", "Waist", True),
+            ("Waist", "Spine", True),
+            ("Spine", "Chest", True),
+        ])
+
     def test_super_head_root_is_disconnected_from_parent_rig(self):
         parents = {
             "Waist": None,
