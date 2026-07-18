@@ -56,6 +56,29 @@ class PanelStructureTests(unittest.TestCase):
             "RERIGIFY_OT_BoneRuleSync",
         }.issubset(operator_classes))
 
+    def test_bone_rule_panel_draws_chain_mode(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        panel = next(
+            node for node in tree.body
+            if (
+                isinstance(node, ast.ClassDef)
+                and node.name == "RERIGIFY_PT_BoneRules"
+            )
+        )
+        properties = {
+            call.args[1].value
+            for call in ast.walk(panel)
+            if (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "prop"
+                and len(call.args) > 1
+                and isinstance(call.args[1], ast.Constant)
+            )
+        }
+        self.assertIn("apply_as_chain", properties)
+
     def test_bone_move_operator_and_buttons_are_registered(self):
         operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
         operator_tree = ast.parse(operator_source)

@@ -6,7 +6,11 @@ import json
 
 import bpy
 
-from .core import ConfigError, EXPLICIT_CHAIN_MIN_LENGTHS, resolve_bone_rules
+from .core import (
+    ConfigError,
+    EXPLICIT_CHAIN_MIN_LENGTHS,
+    resolve_bone_rule_rows,
+)
 from .rigify_adapter import (
     RigifyParameterLayout,
     apply_parameters,
@@ -61,12 +65,17 @@ def get_parameter_carrier(source, item, index):
 
 
 def _rule_source_bone(source, rule_index):
-    from .rules import rule_dicts
-    matches = resolve_bone_rules(
+    from .rules import armature_rule_topology, rule_dicts
+
+    rules = rule_dicts(source.data.re_rigify)
+    parents, aligned_edges = armature_rule_topology(source.data)
+    rows = resolve_bone_rule_rows(
         source.data.bones.keys(),
-        [rule_dicts(source.data.re_rigify)[rule_index]],
+        [rules[rule_index]],
+        parents,
+        aligned_edges,
     )
-    return next(iter(matches))
+    return rows[0]["bone_name"]
 
 
 def get_rule_parameter_carrier(source, rule, rule_index):
@@ -459,6 +468,12 @@ class RERIGIFY_PT_BoneRules(_RERIGIFY_PT_Base, bpy.types.Panel):
             rule = settings.bone_rules[settings.active_bone_rule_index]
             layout.prop(rule, "kind")
             layout.prop(rule, "pattern")
+            layout.prop(rule, "apply_as_chain")
+            if rule.apply_as_chain:
+                layout.label(
+                    text="Only chain roots receive the Rigify type",
+                    icon="LINKED",
+                )
             refresh_rigify_types(context)
             layout.prop_search(
                 rule, "rigify_type",
