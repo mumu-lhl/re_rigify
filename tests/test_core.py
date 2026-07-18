@@ -4,6 +4,7 @@ from re_rigify.core import (
     CHAIN_RULE_MIN_LENGTHS,
     ConfigError,
     DEFAULT_COMPATIBILITY,
+    EXPLICIT_CHAIN_MIN_LENGTHS,
     choose_drive_spec,
     choose_drive_target,
     infer_rigify_topology,
@@ -721,6 +722,26 @@ class ConfigValidationTests(unittest.TestCase):
                 ("Chest", "Neck", False),
                 ("Neck", "Head", True),
             ],
+        )
+
+    def test_infers_disconnected_basic_tail_chain(self):
+        parents = {
+            "EarPhysics": None,
+            "Ear_01_L": "EarPhysics",
+            "Ear_02_L": "Ear_01_L",
+        }
+
+        operations = infer_rigify_topology(
+            [{"bone_name": "Ear_01_L", "rigify_type": "spines.basic_tail"}],
+            parents,
+        )
+
+        self.assertEqual(operations, [
+            ("Ear_01_L", "Ear_02_L", True),
+        ])
+        self.assertEqual(
+            EXPLICIT_CHAIN_MIN_LENGTHS["spines.basic_tail"],
+            2,
         )
 
     def test_mirror_parameter_value_recursively_maps_bone_names(self):
