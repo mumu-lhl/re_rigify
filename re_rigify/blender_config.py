@@ -206,40 +206,51 @@ def armature_to_payload(armature: bpy.types.Armature) -> dict:
 def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
     """Replace stored configuration only after the whole payload is normalized."""
     payload = normalize_config(payload)
+    from .ui import flush_parameter_carrier, remove_parameter_carrier
+    flush_parameter_carrier()
+    remove_parameter_carrier()
     settings = armature.re_rigify
-    settings.bones.clear()
-    settings.collections.clear()
-    settings.color_sets.clear()
-    for source in payload["bones"]:
-        item = settings.bones.add()
-        item.bone_name = source["bone_name"]
-        item.rigify_type = source["rigify_type"]
-        apply_chain_bones_to_item(item, source["chain_bones"])
-        item.parameters_json = json.dumps(source["parameters"], ensure_ascii=False, sort_keys=True)
-        _apply_compatibility_to_item(item, source["compatibility"])
-    for source in payload["collections"]:
-        item = settings.collections.add()
-        item.name = source["name"]
-        item.ui_title = source["ui_title"]
-        item.ui_row = source["ui_row"]
-        item.row_order = source["row_order"]
-        item.color_set_name = source["color_set"]
-        for source_rule in source["rules"]:
-            rule = item.rules.add()
-            rule.kind = source_rule["kind"]
-            rule.pattern = source_rule["pattern"]
-    for source in payload["color_sets"]:
-        item = settings.color_sets.add()
-        item.name = source["name"]
-        item.active = source["active"]
-        item.normal = source["normal"]
-        item.select = source["select"]
-        item.standard_colors_lock = source["standard_colors_lock"]
-    settings.active_bone_index = min(settings.active_bone_index, max(0, len(settings.bones) - 1))
-    settings.active_collection_index = min(
-        settings.active_collection_index, max(0, len(settings.collections) - 1)
-    )
-    settings.active_color_index = min(settings.active_color_index, max(0, len(settings.color_sets) - 1))
+    with suspend_carrier_updates():
+        settings.bones.clear()
+        settings.collections.clear()
+        settings.color_sets.clear()
+        for source in payload["bones"]:
+            item = settings.bones.add()
+            item.bone_name = source["bone_name"]
+            item.rigify_type = source["rigify_type"]
+            apply_chain_bones_to_item(item, source["chain_bones"])
+            item.parameters_json = json.dumps(
+                source["parameters"], ensure_ascii=False, sort_keys=True,
+            )
+            _apply_compatibility_to_item(item, source["compatibility"])
+        for source in payload["collections"]:
+            item = settings.collections.add()
+            item.name = source["name"]
+            item.ui_title = source["ui_title"]
+            item.ui_row = source["ui_row"]
+            item.row_order = source["row_order"]
+            item.color_set_name = source["color_set"]
+            for source_rule in source["rules"]:
+                rule = item.rules.add()
+                rule.kind = source_rule["kind"]
+                rule.pattern = source_rule["pattern"]
+        for source in payload["color_sets"]:
+            item = settings.color_sets.add()
+            item.name = source["name"]
+            item.active = source["active"]
+            item.normal = source["normal"]
+            item.select = source["select"]
+            item.standard_colors_lock = source["standard_colors_lock"]
+        settings.active_bone_index = min(
+            settings.active_bone_index, max(0, len(settings.bones) - 1),
+        )
+        settings.active_collection_index = min(
+            settings.active_collection_index,
+            max(0, len(settings.collections) - 1),
+        )
+        settings.active_color_index = min(
+            settings.active_color_index, max(0, len(settings.color_sets) - 1),
+        )
 
 
 def register() -> None:

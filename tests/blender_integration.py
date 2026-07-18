@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -94,6 +95,45 @@ try:
         batch_settings.bones[1],
         1,
     ) is not None
+
+    reference_source = make_armature("Reference Import", ["A", "B"])
+    reference_payload = {
+        "format": "re-rigify",
+        "schema_version": 1,
+        "bones": [{
+            "bone_name": name,
+            "rigify_type": "basic.super_copy",
+            "chain_bones": [],
+            "parameters": {
+                "fk_layers_extra": True,
+                "fk_coll_refs": ["FK"],
+                "tweak_layers_extra": True,
+                "tweak_coll_refs": ["Tweaks"],
+            },
+            "compatibility": DEFAULT_COMPATIBILITY,
+        } for name in ("A", "B")],
+        "collections": [
+            {
+                "name": "FK", "ui_title": "FK", "ui_row": 1, "row_order": 0,
+                "color_set": "", "rules": [],
+            },
+            {
+                "name": "Tweaks", "ui_title": "Tweaks", "ui_row": 1, "row_order": 1,
+                "color_set": "", "rules": [],
+            },
+        ],
+        "color_sets": [],
+    }
+    payload_to_armature(reference_source.data, reference_payload)
+    flush_parameter_carrier()
+    for item in reference_source.data.re_rigify.bones:
+        parameters = json.loads(item.parameters_json)
+        assert parameters["fk_coll_refs"] == ["FK"]
+        assert parameters["tweak_coll_refs"] == ["Tweaks"]
+    assert bpy.data.objects.get(re_rigify.ui.HELPER_NAME) is None
+    reference_data = reference_source.data
+    bpy.data.objects.remove(reference_source, do_unlink=True)
+    bpy.data.armatures.remove(reference_data)
 
     batch_data = batch.data
     bpy.data.objects.remove(batch, do_unlink=True)
@@ -321,7 +361,7 @@ try:
     ref_carrier.rigify_parameters.fk_coll_refs[-1].set_collection(arms)
     ref_carrier.rigify_parameters.tweak_coll_refs[-1].set_collection(arms)
     flush_parameter_carrier()
-    saved_refs = __import__("json").loads(ref_item.parameters_json)
+    saved_refs = json.loads(ref_item.parameters_json)
     assert saved_refs["fk_coll_refs"] == ["Arms"]
     assert saved_refs["tweak_coll_refs"] == ["Arms"]
     re_rigify.ui.remove_parameter_carrier()
