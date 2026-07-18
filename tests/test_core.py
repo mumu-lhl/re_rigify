@@ -11,6 +11,7 @@ from re_rigify.core import (
     mirror_compatibility,
     move_selected_indices,
     normalize_config,
+    preview_bone_rule,
     mirror_parameter_value,
     rename_collection_references,
     remove_collection_references,
@@ -177,6 +178,58 @@ class ChainBoneRuleTests(unittest.TestCase):
         result = normalize_config(payload)
 
         self.assertFalse(result["bone_rules"][0]["apply_as_chain"])
+
+    def test_preview_contains_only_final_effective_matches(self):
+        rules = [
+            self.rule(
+                rule_id="all",
+                apply_as_chain=False,
+                rigify_type="basic.raw_copy",
+            ),
+            self.rule(
+                rule_id="tip",
+                kind="EXACT",
+                pattern="HairB_02",
+                apply_as_chain=False,
+                rigify_type="basic.raw_copy",
+            ),
+        ]
+
+        preview = preview_bone_rule(self.NAMES, rules, "all")
+
+        self.assertEqual(preview["bone_names"], self.NAMES[:-1])
+        self.assertEqual(preview["chain_count"], 0)
+
+    def test_chain_preview_flattens_root_to_child(self):
+        preview = preview_bone_rule(
+            self.NAMES,
+            [self.rule()],
+            "hair",
+            self.PARENTS,
+            self.ALIGNED,
+        )
+
+        self.assertEqual(preview["bone_names"], self.NAMES)
+        self.assertEqual(preview["chain_count"], 2)
+
+    def test_fully_overridden_rule_has_empty_preview(self):
+        rules = [
+            self.rule(
+                rule_id="first",
+                apply_as_chain=False,
+                rigify_type="basic.raw_copy",
+            ),
+            self.rule(
+                rule_id="second",
+                apply_as_chain=False,
+                rigify_type="basic.raw_copy",
+            ),
+        ]
+
+        preview = preview_bone_rule(self.NAMES, rules, "first")
+
+        self.assertEqual(preview["bone_names"], [])
+        self.assertEqual(preview["rows"], [])
 
     def test_chain_rule_materializes_only_ordered_roots(self):
         rows = resolve_bone_rule_rows(

@@ -336,6 +336,34 @@ def resolve_bone_rule_rows(
     return rows
 
 
+def preview_bone_rule(
+    bone_names: Iterable[str],
+    rules: Iterable[dict[str, Any]],
+    rule_id: str,
+    parents: dict[str, str | None] | None = None,
+    aligned_edges: set[tuple[str, str]] | None = None,
+) -> dict[str, Any]:
+    rows = resolve_bone_rule_rows(
+        bone_names, rules, parents, aligned_edges,
+    )
+    selected = [
+        row for row in rows
+        if row["rule"]["rule_id"] == rule_id
+    ]
+    preview_names = [
+        bone_name
+        for row in selected
+        for bone_name in (row["chain_bones"] or [row["bone_name"]])
+    ]
+    return {
+        "bone_names": preview_names,
+        "chain_count": sum(
+            bool(row["chain_bones"]) for row in selected
+        ),
+        "rows": selected,
+    }
+
+
 def materialize_bone_rules(
     payload: dict[str, Any],
     bone_names: Iterable[str],
