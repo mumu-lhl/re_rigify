@@ -16,6 +16,7 @@ from re_rigify.generate import (
     validate_bone_parameters,
 )
 from re_rigify.operators import select_only
+from re_rigify.rules import sync_bone_rules
 from re_rigify.drive import (
     DRIVE_MAP_PROPERTY,
     DRIVER_BONE_PREFIX,
@@ -135,6 +136,38 @@ try:
     bpy.data.objects.remove(reference_source, do_unlink=True)
     bpy.data.armatures.remove(reference_data)
 
+    rule_source = make_armature(
+        "Rule Source", ["Root", "Finger_Index", "Finger_Middle"],
+    )
+    rule_settings = rule_source.data.re_rigify
+    rule = rule_settings.bone_rules.add()
+    rule.rule_id = "fingers"
+    rule.kind = "GLOB"
+    rule.pattern = "Finger_*"
+    rule.rigify_type = "basic.super_copy"
+    rule.parameters_json = '{"make_control": true}'
+    assert sync_bone_rules(rule_source.data) == (2, 0, 0)
+    assert [item.bone_name for item in rule_settings.bones] == [
+        "Finger_Index", "Finger_Middle",
+    ]
+    assert all(item.managed_rule_id == "fingers" for item in rule_settings.bones)
+    rule_settings.bones[0].collection_selected = True
+    rule_settings.active_bone_index = 0
+    rule.pattern = "Finger_Index"
+    added, _updated, removed = sync_bone_rules(rule_source.data)
+    assert (added, removed) == (0, 1)
+    active_rule_bone = rule_settings.bones[rule_settings.active_bone_index]
+    assert active_rule_bone.bone_name == "Finger_Index"
+    assert active_rule_bone.collection_selected
+    canonical = armature_to_payload(rule_source.data, include_managed=False)
+    resolved = armature_to_payload(rule_source.data, include_managed=True)
+    assert not canonical["bones"]
+    assert [item["bone_name"] for item in resolved["bones"]] == ["Finger_Index"]
+    assert canonical["bone_rules"][0]["rule_id"] == "fingers"
+    rule_data = rule_source.data
+    bpy.data.objects.remove(rule_source, do_unlink=True)
+    bpy.data.armatures.remove(rule_data)
+
     batch_data = batch.data
     bpy.data.objects.remove(batch, do_unlink=True)
     bpy.data.armatures.remove(batch_data)
@@ -155,12 +188,14 @@ try:
             "parameters": {},
             "compatibility": DEFAULT_COMPATIBILITY,
         }],
+        "bone_rules": [],
         "collections": [{
             "name": "Arms",
             "ui_title": "Arm Controls",
             "ui_row": 1,
             "row_order": 0,
             "color_set": "",
+            "visible_after_generation": True,
             "rules": [{"kind": "GLOB", "pattern": "upper_arm.*"}],
         }],
         "color_sets": [],

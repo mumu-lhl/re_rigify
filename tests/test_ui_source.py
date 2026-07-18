@@ -22,6 +22,15 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_bone_rule_rna_and_sync_module_exist(self):
+        source = Path("re_rigify/blender_config.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        classes = {
+            node.name for node in tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertIn("RERIGIFY_PG_BoneRule", classes)
+        self.assertTrue(Path("re_rigify/rules.py").exists())
+
     def test_bone_move_operator_and_buttons_are_registered(self):
         operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
         operator_tree = ast.parse(operator_source)

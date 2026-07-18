@@ -64,6 +64,7 @@ class RERIGIFY_PG_ChainBone(bpy.types.PropertyGroup):
 
 class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
     collection_selected: BoolProperty(name="Select for Collection", default=False)
+    managed_rule_id: StringProperty(default="", options={"HIDDEN"})
     bone_name: StringProperty(name="Bone", update=_refresh_parameter_carrier)
     rigify_type: StringProperty(name="Rigify Type", update=_refresh_parameter_carrier)
     parameters_json: StringProperty(name="Parameters", default="{}")
@@ -115,12 +116,30 @@ class RERIGIFY_PG_CollectionRule(bpy.types.PropertyGroup):
     pattern: StringProperty(name="Bone Pattern")
 
 
+class RERIGIFY_PG_BoneRule(bpy.types.PropertyGroup):
+    rule_id: StringProperty(name="Rule ID")
+    kind: EnumProperty(
+        name="Match",
+        items=(
+            ("EXACT", "Exact", "Match one complete bone name"),
+            ("GLOB", "Glob", "Case-sensitive *, ? and [] pattern"),
+        ),
+        default="GLOB",
+    )
+    pattern: StringProperty(name="Bone Pattern")
+    rigify_type: StringProperty(name="Rigify Type")
+    parameters_json: StringProperty(name="Parameters", default="{}")
+
+
 class RERIGIFY_PG_CollectionConfig(bpy.types.PropertyGroup):
     name: StringProperty(name="Collection")
     ui_title: StringProperty(name="Button Title")
     ui_row: IntProperty(name="UI Row", min=0, default=0)
     row_order: IntProperty(name="Order", min=0, default=0)
     color_set_name: StringProperty(name="Color Set")
+    visible_after_generation: BoolProperty(
+        name="Visible After Generation", default=True,
+    )
     rules: CollectionProperty(type=RERIGIFY_PG_CollectionRule)
     active_rule_index: IntProperty(default=0)
 
@@ -136,6 +155,8 @@ class RERIGIFY_PG_ColorSet(bpy.types.PropertyGroup):
 class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
     bones: CollectionProperty(type=RERIGIFY_PG_BoneConfig)
     active_bone_index: IntProperty(default=0, update=_refresh_active_bone)
+    bone_rules: CollectionProperty(type=RERIGIFY_PG_BoneRule)
+    active_bone_rule_index: IntProperty(default=0)
     collections: CollectionProperty(type=RERIGIFY_PG_CollectionConfig)
     active_collection_index: IntProperty(default=0)
     color_sets: CollectionProperty(type=RERIGIFY_PG_ColorSet)
@@ -146,6 +167,7 @@ class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
 CLASSES = (
     RERIGIFY_PG_ChainBone,
     RERIGIFY_PG_BoneConfig,
+    RERIGIFY_PG_BoneRule,
     RERIGIFY_PG_CollectionRule,
     RERIGIFY_PG_CollectionConfig,
     RERIGIFY_PG_ColorSet,
@@ -173,24 +195,43 @@ def _apply_compatibility_to_item(item, source: dict) -> None:
         setattr(item, name, value)
 
 
-def armature_to_payload(armature: bpy.types.Armature) -> dict:
+def _serialize_bone(item) -> dict:
+    return {
+        "bone_name": item.bone_name,
+        "rigify_type": item.rigify_type,
+        "chain_bones": chain_bones_from_item(item),
+        "parameters": json.loads(item.parameters_json or "{}"),
+        "compatibility": _compatibility_from_item(item),
+    }
+
+
+def armature_to_payload(
+    armature: bpy.types.Armature,
+    include_managed: bool = True,
+) -> dict:
     settings = armature.re_rigify
+    bones = [
+        item for item in settings.bones
+        if include_managed or not item.managed_rule_id
+    ]
     return {
         "format": FORMAT_NAME,
         "schema_version": SCHEMA_VERSION,
-        "bones": [{
-            "bone_name": item.bone_name,
-            "rigify_type": item.rigify_type,
-            "chain_bones": chain_bones_from_item(item),
-            "parameters": json.loads(item.parameters_json or "{}"),
-            "compatibility": _compatibility_from_item(item),
-        } for item in settings.bones],
+        "bones": [_serialize_bone(item) for item in bones],
+        "bone_rules": [{
+            "rule_id": rule.rule_id,
+            "kind": rule.kind,
+            "pattern": rule.pattern,
+            "rigify_type": rule.rigify_type,
+            "parameters": json.loads(rule.parameters_json or "{}"),
+        } for rule in settings.bone_rules],
         "collections": [{
             "name": item.name,
             "ui_title": item.ui_title,
             "ui_row": item.ui_row,
             "row_order": item.row_order,
             "color_set": item.color_set_name,
+            "visible_after_generation": item.visible_after_generation,
             "rules": [{"kind": rule.kind, "pattern": rule.pattern} for rule in item.rules],
         } for item in settings.collections],
         "color_sets": [{
@@ -212,6 +253,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
     settings = armature.re_rigify
     with suspend_carrier_updates():
         settings.bones.clear()
+        settings.bone_rules.clear()
         settings.collections.clear()
         settings.color_sets.clear()
         for source in payload["bones"]:
@@ -223,6 +265,15 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
                 source["parameters"], ensure_ascii=False, sort_keys=True,
             )
             _apply_compatibility_to_item(item, source["compatibility"])
+        for source in payload["bone_rules"]:
+            rule = settings.bone_rules.add()
+            rule.rule_id = source["rule_id"]
+            rule.kind = source["kind"]
+            rule.pattern = source["pattern"]
+            rule.rigify_type = source["rigify_type"]
+            rule.parameters_json = json.dumps(
+                source["parameters"], ensure_ascii=False, sort_keys=True,
+            )
         for source in payload["collections"]:
             item = settings.collections.add()
             item.name = source["name"]
@@ -230,6 +281,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
             item.ui_row = source["ui_row"]
             item.row_order = source["row_order"]
             item.color_set_name = source["color_set"]
+            item.visible_after_generation = source["visible_after_generation"]
             for source_rule in source["rules"]:
                 rule = item.rules.add()
                 rule.kind = source_rule["kind"]
@@ -251,6 +303,12 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
         settings.active_color_index = min(
             settings.active_color_index, max(0, len(settings.color_sets) - 1),
         )
+        settings.active_bone_rule_index = min(
+            settings.active_bone_rule_index,
+            max(0, len(settings.bone_rules) - 1),
+        )
+    from .rules import sync_bone_rules
+    sync_bone_rules(armature)
 
 
 def register() -> None:
