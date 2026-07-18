@@ -6,6 +6,7 @@ import json
 
 import bpy
 
+from .core import EXPLICIT_CHAIN_MIN_LENGTHS
 from .rigify_adapter import (
     RigifyParameterLayout,
     apply_parameters,
@@ -175,6 +176,11 @@ class RERIGIFY_UL_Bones(bpy.types.UIList):
         layout.label(text=item.rigify_type or "No type", translate=False)
 
 
+class RERIGIFY_UL_ChainBones(bpy.types.UIList):
+    def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
+        layout.label(text=item.bone_name or "No bone", icon="BONE_DATA", translate=False)
+
+
 class RERIGIFY_UL_Collections(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
         layout.label(text=item.name or "Unnamed", icon="GROUP_BONE", translate=False)
@@ -308,6 +314,25 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
             layout.prop_search(
                 item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type"
             )
+            if item.rigify_type in EXPLICIT_CHAIN_MIN_LENGTHS:
+                chain = layout.box()
+                chain.label(text="Explicit Chain")
+                row = chain.row()
+                row.template_list(
+                    "RERIGIFY_UL_ChainBones", "", item, "chain_bones",
+                    item, "active_chain_index", rows=3,
+                )
+                buttons = row.column(align=True)
+                buttons.operator("re_rigify.chain_add_selected", text="", icon="ADD")
+                buttons.operator("re_rigify.chain_remove", text="", icon="REMOVE")
+                up = buttons.row(align=True)
+                up.enabled = item.active_chain_index > 0
+                op = up.operator("re_rigify.chain_move", text="", icon="TRIA_UP")
+                op.direction = -1
+                down = buttons.row(align=True)
+                down.enabled = item.active_chain_index < len(item.chain_bones) - 1
+                op = down.operator("re_rigify.chain_move", text="", icon="TRIA_DOWN")
+                op.direction = 1
             actions = layout.row(align=True)
             actions.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
             actions.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
@@ -587,7 +612,8 @@ class RERIGIFY_PT_Configuration(_RERIGIFY_PT_Base, bpy.types.Panel):
 
 
 CLASSES = (
-    RERIGIFY_UL_Bones, RERIGIFY_UL_Collections, RERIGIFY_UL_Rules,
+    RERIGIFY_UL_Bones, RERIGIFY_UL_ChainBones,
+    RERIGIFY_UL_Collections, RERIGIFY_UL_Rules,
     RERIGIFY_UL_ColorSets,
     RERIGIFY_OT_parameter_collection_ref_add,
     RERIGIFY_OT_parameter_collection_ref_remove,

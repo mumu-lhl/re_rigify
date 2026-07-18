@@ -58,6 +58,10 @@ def _refresh_active_bone(settings, context):
         prepare_parameter_carrier(context, obj, item, index)
 
 
+class RERIGIFY_PG_ChainBone(bpy.types.PropertyGroup):
+    bone_name: StringProperty(name="Bone")
+
+
 class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
     collection_selected: BoolProperty(name="Select for Collection", default=False)
     bone_name: StringProperty(name="Bone", update=_refresh_parameter_carrier)
@@ -82,6 +86,23 @@ class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
     upper_lid_pattern: StringProperty(name="Upper Eyelids")
     lower_lid_pattern: StringProperty(name="Lower Eyelids")
     synthetic_lids_fallback: BoolProperty(name="Synthetic Eyelid Fallback", default=False)
+    chain_bones: CollectionProperty(type=RERIGIFY_PG_ChainBone)
+    active_chain_index: IntProperty(default=0)
+
+
+def chain_bones_from_item(item) -> list[str]:
+    return [entry.bone_name for entry in item.chain_bones]
+
+
+def apply_chain_bones_to_item(item, bone_names) -> None:
+    item.chain_bones.clear()
+    for bone_name in bone_names:
+        entry = item.chain_bones.add()
+        entry.bone_name = bone_name
+    item.active_chain_index = min(
+        item.active_chain_index,
+        max(0, len(item.chain_bones) - 1),
+    )
 
 
 class RERIGIFY_PG_CollectionRule(bpy.types.PropertyGroup):
@@ -123,6 +144,7 @@ class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
 
 
 CLASSES = (
+    RERIGIFY_PG_ChainBone,
     RERIGIFY_PG_BoneConfig,
     RERIGIFY_PG_CollectionRule,
     RERIGIFY_PG_CollectionConfig,
@@ -159,6 +181,7 @@ def armature_to_payload(armature: bpy.types.Armature) -> dict:
         "bones": [{
             "bone_name": item.bone_name,
             "rigify_type": item.rigify_type,
+            "chain_bones": chain_bones_from_item(item),
             "parameters": json.loads(item.parameters_json or "{}"),
             "compatibility": _compatibility_from_item(item),
         } for item in settings.bones],
@@ -191,6 +214,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
         item = settings.bones.add()
         item.bone_name = source["bone_name"]
         item.rigify_type = source["rigify_type"]
+        apply_chain_bones_to_item(item, source["chain_bones"])
         item.parameters_json = json.dumps(source["parameters"], ensure_ascii=False, sort_keys=True)
         _apply_compatibility_to_item(item, source["compatibility"])
     for source in payload["collections"]:

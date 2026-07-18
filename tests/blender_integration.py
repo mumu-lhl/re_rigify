@@ -81,6 +81,7 @@ try:
         "bones": [{
             "bone_name": "spine",
             "rigify_type": "basic.raw_copy",
+            "chain_bones": [],
             "parameters": {},
             "compatibility": DEFAULT_COMPATIBILITY,
         }],

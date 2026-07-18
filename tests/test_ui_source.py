@@ -141,6 +141,27 @@ class PanelStructureTests(unittest.TestCase):
             "RERIGIFY_OT_parameter_collection_ref_remove",
         }.issubset(classes))
 
+    def test_explicit_chain_ui_and_operators_are_registered(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        classes = {
+            node.name for node in tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertTrue({
+            "RERIGIFY_UL_ChainBones",
+        }.issubset(classes))
+
+        operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
+        operator_tree = ast.parse(operator_source)
+        operator_classes = {
+            node.name for node in operator_tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertTrue({
+            "RERIGIFY_OT_ChainAddSelected",
+            "RERIGIFY_OT_ChainRemove",
+            "RERIGIFY_OT_ChainMove",
+        }.issubset(operator_classes))
+
 
 if __name__ == "__main__":
     unittest.main()

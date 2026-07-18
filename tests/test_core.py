@@ -50,6 +50,7 @@ class ConfigValidationTests(unittest.TestCase):
             "bones": [{
                 "bone_name": "spine",
                 "rigify_type": "basic.super_copy",
+                "chain_bones": [],
                 "parameters": {},
             }],
             "collections": [],
@@ -89,6 +90,106 @@ class ConfigValidationTests(unittest.TestCase):
         result = normalize_config(payload)
 
         self.assertEqual(result["bones"][0]["compatibility"], compatibility)
+
+    def test_version_one_defaults_to_empty_explicit_chain(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "Hip",
+                "rigify_type": "spines.basic_spine",
+                "parameters": {},
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = normalize_config(payload)
+
+        self.assertEqual(result["schema_version"], 1)
+        self.assertEqual(result["bones"][0]["chain_bones"], [])
+
+    def test_version_one_round_trips_explicit_chain(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "Hip",
+                "rigify_type": "spines.basic_spine",
+                "chain_bones": ["Hip", "Waist", "Spine", "Chest"],
+                "parameters": {},
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = normalize_config(payload)
+
+        self.assertEqual(
+            result["bones"][0]["chain_bones"],
+            ["Hip", "Waist", "Spine", "Chest"],
+        )
+
+    def test_explicit_chain_root_must_match_configured_bone(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "Hip",
+                "rigify_type": "spines.basic_spine",
+                "chain_bones": ["Waist", "Spine", "Chest"],
+                "parameters": {},
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = validate_config(
+            payload, ["Hip", "Waist", "Spine", "Chest"], ["spines.basic_spine"],
+        )
+
+        self.assertTrue(any("must start with" in error for error in result.errors))
+
+    def test_explicit_chain_rejects_missing_and_duplicate_bones(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "Hip",
+                "rigify_type": "spines.basic_spine",
+                "chain_bones": ["Hip", "Missing", "Hip"],
+                "parameters": {},
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = validate_config(
+            payload, ["Hip", "Waist", "Spine"], ["spines.basic_spine"],
+        )
+
+        self.assertTrue(any("does not exist" in error and "Missing" in error for error in result.errors))
+        self.assertTrue(any("duplicate" in error and "Hip" in error for error in result.errors))
+
+    def test_explicit_basic_spine_requires_three_bones(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [{
+                "bone_name": "Hip",
+                "rigify_type": "spines.basic_spine",
+                "chain_bones": ["Hip", "Waist"],
+                "parameters": {},
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = validate_config(
+            payload, ["Hip", "Waist"], ["spines.basic_spine"],
+        )
+
+        self.assertTrue(any("at least 3" in error for error in result.errors))
 
     def test_unique_child_chain_rejects_branches(self):
         parents = {"root": None, "a": "root", "b": "root"}
@@ -235,6 +336,7 @@ class ConfigValidationTests(unittest.TestCase):
             "bones": [{
                 "bone_name": "spine",
                 "rigify_type": "basic.super_copy",
+                "chain_bones": [],
                 "parameters": {},
                 "compatibility": DEFAULT_COMPATIBILITY,
             }],

@@ -45,9 +45,8 @@ Rules:
 - Explicit chains describe linear connected chains only. Branched topology keeps existing
   inference and compatibility mechanisms.
 
-Configuration schema advances to version 2. Version 1 input migrates by adding an empty
-`chain_bones` list to every bone item. Export always writes version 2. This prevents an
-older implementation from silently accepting and discarding explicit topology.
+Configuration remains schema version 1 because the extension has not been distributed.
+Input without `chain_bones` receives an empty list; export writes the field.
 
 ## Blender Storage and UI
 
@@ -129,13 +128,12 @@ Generation does not guess a replacement chain after explicit-chain validation fa
 
 Pure Python tests cover:
 
-- version 1 migration
-- version 2 round-trip
+- version 1 defaults and round-trip
 - root mismatch, missing bone, duplicates, and minimum length
 - explicit operations overriding inferred hierarchy
 - mirrored chain names
 
-Blender integration tests cover:
+Connected Blender MCP integration checks cover:
 
 - UI storage and JSON round-trip
 - explicit `Hip, Waist, Spine, Chest` temporary topology

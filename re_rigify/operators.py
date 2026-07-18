@@ -12,7 +12,9 @@ from bpy_extras.io_utils import ExportHelper, ImportHelper
 from .blender_config import (
     _apply_compatibility_to_item,
     _compatibility_from_item,
+    apply_chain_bones_to_item,
     armature_to_payload,
+    chain_bones_from_item,
     payload_to_armature,
     suspend_carrier_updates,
 )
@@ -179,6 +181,100 @@ class RERIGIFY_OT_BoneRemove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class RERIGIFY_OT_ChainAddSelected(bpy.types.Operator):
+    bl_idname = "re_rigify.chain_add_selected"
+    bl_label = "Add Selected Bones to Explicit Chain"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        obj = active_armature(context)
+        settings = obj.data.re_rigify
+        if not settings.bones:
+            return {"CANCELLED"}
+        item = settings.bones[settings.active_bone_index]
+        if obj.mode == "EDIT":
+            selected_names = {
+                bone.name for bone in obj.data.edit_bones
+                if bone.select or bone.select_head or bone.select_tail
+            }
+        elif obj.mode == "POSE":
+            selected_names = {
+                bone.name for bone in (context.selected_pose_bones or ())
+                if bone.id_data == obj
+            }
+        else:
+            selected_names = {
+                bone.name for bone in obj.data.bones if bone.select
+            }
+        if not selected_names:
+            active = (
+                obj.data.edit_bones.active if obj.mode == "EDIT"
+                else obj.data.bones.active
+            )
+            if active is not None:
+                selected_names = {active.name}
+        if not selected_names:
+            self.report({"ERROR"}, "Select one or more armature bones")
+            return {"CANCELLED"}
+
+        existing = set(chain_bones_from_item(item))
+        ordered = []
+        if not existing and item.bone_name in obj.data.bones:
+            ordered.append(item.bone_name)
+            existing.add(item.bone_name)
+        ordered.extend(
+            bone.name for bone in obj.data.bones
+            if bone.name in selected_names and bone.name not in existing
+        )
+        for bone_name in ordered:
+            entry = item.chain_bones.add()
+            entry.bone_name = bone_name
+        item.active_chain_index = max(0, len(item.chain_bones) - 1)
+        self.report({"INFO"}, f"Added {len(ordered)} explicit chain bone(s)")
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_ChainRemove(bpy.types.Operator):
+    bl_idname = "re_rigify.chain_remove"
+    bl_label = "Remove Explicit Chain Bone"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        settings = active_armature(context).data.re_rigify
+        if not settings.bones:
+            return {"CANCELLED"}
+        item = settings.bones[settings.active_bone_index]
+        if not item.chain_bones:
+            return {"CANCELLED"}
+        item.chain_bones.remove(item.active_chain_index)
+        item.active_chain_index = min(
+            item.active_chain_index,
+            max(0, len(item.chain_bones) - 1),
+        )
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_ChainMove(bpy.types.Operator):
+    bl_idname = "re_rigify.chain_move"
+    bl_label = "Move Explicit Chain Bone"
+    bl_options = {"UNDO"}
+
+    direction: IntProperty()
+
+    def execute(self, context):
+        settings = active_armature(context).data.re_rigify
+        if not settings.bones:
+            return {"CANCELLED"}
+        item = settings.bones[settings.active_bone_index]
+        source = item.active_chain_index
+        target = source + self.direction
+        if not 0 <= source < len(item.chain_bones) or not 0 <= target < len(item.chain_bones):
+            return {"CANCELLED"}
+        item.chain_bones.move(source, target)
+        item.active_chain_index = target
+        return {"FINISHED"}
+
+
 class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
     bl_idname = "re_rigify.mirror_bone_config"
     bl_label = "Mirror Configuration to Opposite Side"
@@ -201,13 +297,17 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
             (
                 item.bone_name,
                 item.rigify_type,
+                chain_bones_from_item(item),
                 item.parameters_json,
                 _compatibility_from_item(item),
             )
             for item in selected
         ]
-        source_names = {bone_name for bone_name, _rig_type, _parameters, _compat in snapshots}
-        for bone_name, _rig_type, _parameters, _compat in snapshots:
+        source_names = {
+            bone_name
+            for bone_name, _rig_type, _chain_bones, _parameters, _compat in snapshots
+        }
+        for bone_name, _rig_type, _chain_bones, _parameters, _compat in snapshots:
             target_name = mirror_name(bone_name)
             if target_name == bone_name:
                 self.report({"ERROR"}, f"{bone_name!r} has no L/R side suffix")
@@ -222,7 +322,7 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
         remove_parameter_carrier()
         last_target_index = settings.active_bone_index
         with suspend_carrier_updates():
-            for bone_name, rig_type, parameters_json, compatibility in snapshots:
+            for bone_name, rig_type, chain_bones, parameters_json, compatibility in snapshots:
                 target_name = mirror_name(bone_name)
                 target_index = next(
                     (index for index, item in enumerate(settings.bones) if item.bone_name == target_name),
@@ -233,6 +333,10 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
                     target_index = len(settings.bones) - 1
                 target.bone_name = target_name
                 target.rigify_type = rig_type
+                apply_chain_bones_to_item(
+                    target,
+                    [mirror_name(chain_bone) for chain_bone in chain_bones],
+                )
                 target.parameters_json = json.dumps(
                     mirror_parameter_value(json.loads(parameters_json or "{}"), mirror_name),
                     ensure_ascii=False,
@@ -743,6 +847,7 @@ class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
 
 CLASSES = (
     RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove,
+    RERIGIFY_OT_ChainAddSelected, RERIGIFY_OT_ChainRemove, RERIGIFY_OT_ChainMove,
     RERIGIFY_OT_MirrorBoneConfig, RERIGIFY_OT_CopyParametersToSelected,
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,
     RERIGIFY_OT_CollectionMove, RERIGIFY_OT_CollectionDuplicate,

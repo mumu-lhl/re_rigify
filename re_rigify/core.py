@@ -23,6 +23,13 @@ DEFAULT_COMPATIBILITY = {
     "synthetic_lids_fallback": False,
 }
 
+EXPLICIT_CHAIN_MIN_LENGTHS = {
+    "limbs.arm": 3,
+    "limbs.super_finger": 2,
+    "spines.basic_spine": 3,
+    "spines.super_head": 2,
+}
+
 RIGIFY_DEFAULT_COLOR_SETS = (
     ("Root", (0.5490, 1.0, 1.0), (0.4353, 0.1843, 0.4157), (0.3140, 0.7840, 1.0)),
     ("IK", (0.5490, 1.0, 1.0), (0.6039, 0.0, 0.0), (0.3140, 0.7840, 1.0)),
@@ -274,6 +281,15 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         item = _require_type(item, dict, f"bones[{index}]")
         bone_name = _require_type(item.get("bone_name"), str, f"bones[{index}].bone_name")
         rigify_type = _require_type(item.get("rigify_type"), str, f"bones[{index}].rigify_type")
+        chain_bones = _require_type(
+            item.get("chain_bones", []), list, f"bones[{index}].chain_bones"
+        )
+        for chain_index, chain_bone in enumerate(chain_bones):
+            _require_type(
+                chain_bone,
+                str,
+                f"bones[{index}].chain_bones[{chain_index}]",
+            )
         parameters = _require_type(item.get("parameters", {}), dict, f"bones[{index}].parameters")
         compatibility = normalize_compatibility(
             item.get("compatibility", {}),
@@ -282,6 +298,7 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         normalized_bones.append({
             "bone_name": bone_name,
             "rigify_type": rigify_type,
+            "chain_bones": list(chain_bones),
             "parameters": parameters,
             "compatibility": compatibility,
         })
@@ -405,6 +422,33 @@ def validate_config(
             errors.append(f"bone does not exist: {name!r}")
         if item["rigify_type"] not in rig_types:
             errors.append(f"Rigify type is unavailable: {item['rigify_type']!r}")
+        chain_bones = item["chain_bones"]
+        if chain_bones:
+            if chain_bones[0] != name:
+                errors.append(
+                    f"bone {name!r} explicit chain must start with the configured bone"
+                )
+            chain_seen: set[str] = set()
+            for chain_bone in chain_bones:
+                if chain_bone not in names:
+                    errors.append(
+                        f"bone {name!r} explicit chain bone does not exist: {chain_bone!r}"
+                    )
+                if chain_bone in chain_seen:
+                    errors.append(
+                        f"bone {name!r} explicit chain contains duplicate bone: {chain_bone!r}"
+                    )
+                chain_seen.add(chain_bone)
+            minimum = EXPLICIT_CHAIN_MIN_LENGTHS.get(item["rigify_type"])
+            if minimum is None:
+                errors.append(
+                    f"bone {name!r} Rigify type does not support an explicit chain: "
+                    f"{item['rigify_type']!r}"
+                )
+            elif len(chain_bones) < minimum:
+                errors.append(
+                    f"bone {name!r} explicit chain requires at least {minimum} bones"
+                )
         for parameter, references in item["parameters"].items():
             if not parameter.endswith("_coll_refs"):
                 continue

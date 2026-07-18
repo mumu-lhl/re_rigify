@@ -4,7 +4,7 @@
 
 **Goal:** Add explicit linear metarig chains, make drive cleanup context-safe, and remove the temporary parameter carrier before saving.
 
-**Architecture:** Version 2 configuration stores an optional ordered `chain_bones` list per Rigify root. Core topology planning converts it into the same connection operations already consumed by Blender generation. Blender UI stores ordered chain entries; drive and carrier lifecycle changes remain isolated in their existing modules.
+**Architecture:** Schema version 1 stores an optional ordered `chain_bones` list per Rigify root. Core topology planning converts it into the same connection operations already consumed by Blender generation. Blender UI stores ordered chain entries; drive and carrier lifecycle changes remain isolated in their existing modules.
 
 **Tech Stack:** Python 3, Blender 5.2/Rigify, Blender RNA, `unittest`, Blender background integration tests, jj.
 
@@ -38,13 +38,13 @@
 - [ ] **Step 1: Add failing schema tests**
 
 ```python
-def test_version_one_migrates_to_empty_explicit_chain(self):
+def test_version_one_defaults_to_empty_explicit_chain(self):
     result = normalize_config(self.payload(schema_version=1))
-    self.assertEqual(result["schema_version"], 2)
+    self.assertEqual(result["schema_version"], 1)
     self.assertEqual(result["bones"][0]["chain_bones"], [])
 
-def test_version_two_round_trips_explicit_chain(self):
-    payload = self.payload(schema_version=2)
+def test_version_one_round_trips_explicit_chain(self):
+    payload = self.payload(schema_version=1)
     payload["bones"][0]["chain_bones"] = ["Hip", "Waist", "Spine"]
     self.assertEqual(normalize_config(payload)["bones"][0]["chain_bones"],
                      ["Hip", "Waist", "Spine"])
@@ -61,12 +61,11 @@ Run:
 rtk python3 -m unittest tests.test_core.ConfigValidationTests -v
 ```
 
-Expected: failures because schema 2 and `chain_bones` are unsupported.
+Expected: failures because `chain_bones` is unsupported.
 
 - [ ] **Step 3: Implement schema normalization and validation**
 
-Set `SCHEMA_VERSION = 2`, accept input versions 1 and 2, normalize missing lists to `[]`,
-and validate:
+Keep `SCHEMA_VERSION = 1`, normalize missing lists to `[]`, and validate:
 
 ```python
 chain_bones = _require_type(item.get("chain_bones", []), list, path)
@@ -89,10 +88,10 @@ Run:
 
 ```bash
 rtk python3 -m unittest tests.test_ui_source -v
-rtk blender --background --factory-startup --python tests/blender_integration.py
 ```
 
-Expected: missing chain RNA and operator assertions fail.
+Then run the focused storage check through connected Blender MCP
+`execute_blender_code`. Expected: missing chain RNA and operator assertions fail.
 
 - [ ] **Step 6: Implement RNA, operators, mirroring, and UI**
 
@@ -109,7 +108,7 @@ Import recreates entries. Mirror snapshots and maps every chain name through Rig
 
 - [ ] **Step 7: Verify Task 1**
 
-Run both commands from Step 5, then:
+Run the unit command from Step 5 and the connected Blender MCP storage check, then:
 
 ```bash
 rtk python3 -m unittest discover -s tests -p 'test_*.py' -v
@@ -172,11 +171,11 @@ if chain:
 Continue using `apply_connection_operations`, which preserves child heads and aligns
 parent tails.
 
-- [ ] **Step 4: Add Blender UMA regression**
+- [ ] **Step 4: Add Blender MCP UMA regression**
 
-In `tests/blender_generate.py`, build disconnected `Hip`, `Waist`, `Spine`, `Chest`
-bones, configure `Hip` as `spines.basic_spine` with the explicit chain, generate and
-connect. Assert:
+Through connected Blender MCP, create a temporary armature in a temporary collection with
+disconnected `Hip`, `Waist`, `Spine`, `Chest` bones, configure `Hip` as
+`spines.basic_spine`, generate, connect, and assert:
 
 ```python
 before = source.pose.bones["Hip"].matrix.copy()
@@ -191,9 +190,11 @@ Also assert all source bind matrices remain unchanged immediately after connecti
 - [ ] **Step 5: Verify Task 2**
 
 ```bash
-rtk blender --background --factory-startup --python tests/blender_generate.py
 rtk python3 -m unittest discover -s tests -p 'test_*.py' -v
 ```
+
+Run the UMA check through connected Blender MCP and remove all temporary datablocks in a
+`finally` block.
 
 - [ ] **Step 6: Commit**
 
@@ -205,6 +206,7 @@ rtk jj commit -m "feat(rig): generate explicit metarig chains"
 
 **Files:**
 - Modify: `re_rigify/drive.py`
+- Modify: `re_rigify/generate.py`
 - Modify: `re_rigify/operators.py`
 - Test: `tests/blender_integration.py`
 
@@ -214,17 +216,18 @@ rtk jj commit -m "feat(rig): generate explicit metarig chains"
 
 - [ ] **Step 1: Add failing context regression**
 
-Create helpers, leave the source in Pose Mode, deselect the generated rig, clear the
-view-layer active object, call `remove_drive_constraints(source)`, and assert helper
-bones are removed and prior valid state restored.
+Through connected Blender MCP, create temporary source and rig objects, create helpers,
+leave the source in Pose Mode, deselect the generated rig, clear the view-layer active
+object, call `remove_drive_constraints(source)`, and assert helper bones are removed and
+prior valid state restored.
+
+Add a pure helper test or focused MCP check proving `generate_rig` context restoration
+skips stale `StructRNA` references after temporary metarigs are deleted.
 
 - [ ] **Step 2: Verify RED**
 
-```bash
-rtk blender --background --factory-startup --python tests/blender_integration.py
-```
-
-Expected: `bpy.ops.object.mode_set.poll()` failure or failed context restoration.
+Run through connected Blender MCP. Expected: `bpy.ops.object.mode_set.poll()` failure,
+failed context restoration, or stale `StructRNA` `ReferenceError`.
 
 - [ ] **Step 3: Implement explicit edit context**
 
@@ -243,14 +246,13 @@ with context.temp_override(
 ```
 
 Harden `_restore_object_context` against removed objects, excluded objects, and invalid
-non-Object modes. Catch operator failures in `RERIGIFY_OT_RemoveDrive`, report the error,
-and return `CANCELLED`.
+non-Object modes. Store previous selection by object name in `generate_rig` so deleted
+metarig references are never dereferenced. Catch operator failures in
+`RERIGIFY_OT_RemoveDrive`, report the error, and return `CANCELLED`.
 
 - [ ] **Step 4: Verify Task 3**
 
-```bash
-rtk blender --background --factory-startup --python tests/blender_integration.py
-```
+Run the focused cleanup checks through connected Blender MCP.
 
 - [ ] **Step 5: Commit**
 
@@ -275,11 +277,7 @@ matches serialized JSON.
 
 - [ ] **Step 2: Verify RED**
 
-```bash
-rtk blender --background --factory-startup --python tests/blender_integration.py
-```
-
-Expected: carrier still exists after `_save_pre`.
+Run through connected Blender MCP. Expected: carrier still exists after `_save_pre`.
 
 - [ ] **Step 3: Implement save cleanup**
 
@@ -293,9 +291,7 @@ Keep on-demand recreation unchanged.
 
 - [ ] **Step 4: Verify Task 4**
 
-```bash
-rtk blender --background --factory-startup --python tests/blender_integration.py
-```
+Run the carrier lifecycle check through connected Blender MCP.
 
 - [ ] **Step 5: Commit**
 
@@ -315,20 +311,18 @@ rtk jj commit -m "fix(ui): drop parameter carrier before save"
 
 - [ ] **Step 1: Update README**
 
-Document schema 2 migration, explicit linear chains, carrier lifecycle, and context-safe
+Document schema 1 explicit linear chains, carrier lifecycle, and context-safe
 drive removal. Correct obsolete local-drive text to describe world-space adapter helpers.
 
 - [ ] **Step 2: Run full fresh verification**
 
 ```bash
 rtk python3 -m unittest discover -s tests -p 'test_*.py' -v
-rtk blender --background --factory-startup --python tests/blender_integration.py
-rtk blender --background --factory-startup --python tests/blender_generate.py
-rtk blender --background --factory-startup --python tests/blender_extension_entry.py
 rtk git diff --check
 ```
 
-Expected: all commands exit 0.
+Run storage, UMA generation, drive cleanup, stale-selection, carrier lifecycle, and
+extension-entry checks through connected Blender MCP. Expected: all checks pass.
 
 - [ ] **Step 3: Apply current UMA configuration through Blender MCP**
 
