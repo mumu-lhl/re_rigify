@@ -1,6 +1,7 @@
 import unittest
 
 from re_rigify.core import (
+    CHAIN_RULE_MIN_LENGTHS,
     ConfigError,
     DEFAULT_COMPATIBILITY,
     choose_drive_spec,
@@ -14,6 +15,7 @@ from re_rigify.core import (
     rename_collection_references,
     remove_collection_references,
     resolve_bone_rules,
+    resolve_bone_rule_rows,
     resolve_collection_rules,
     validate_config,
     unique_blender_name,
@@ -122,6 +124,180 @@ class BoneRuleTests(unittest.TestCase):
                 "ordinary_list": ["Old"],
                 "label": "Old",
             },
+        )
+
+
+class ChainBoneRuleTests(unittest.TestCase):
+    NAMES = [
+        "HairA_00", "HairA_01",
+        "HairB_00", "HairB_01", "HairB_02",
+    ]
+    PARENTS = {
+        "HairA_00": "Head",
+        "HairA_01": "HairA_00",
+        "HairB_00": "Head",
+        "HairB_01": "HairB_00",
+        "HairB_02": "HairB_01",
+        "Head": None,
+    }
+    ALIGNED = {
+        ("HairA_00", "HairA_01"),
+        ("HairB_00", "HairB_01"),
+        ("HairB_01", "HairB_02"),
+    }
+
+    @staticmethod
+    def rule(**overrides):
+        return {
+            "rule_id": "hair",
+            "kind": "GLOB",
+            "pattern": "Hair*",
+            "rigify_type": "limbs.spline_tentacle",
+            "parameters": {},
+            "apply_as_chain": True,
+            **overrides,
+        }
+
+    def test_normalize_defaults_chain_mode_off(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [],
+            "bone_rules": [{
+                "rule_id": "hair",
+                "kind": "GLOB",
+                "pattern": "Hair*",
+                "rigify_type": "limbs.spline_tentacle",
+                "parameters": {},
+            }],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        result = normalize_config(payload)
+
+        self.assertFalse(result["bone_rules"][0]["apply_as_chain"])
+
+    def test_chain_rule_materializes_only_ordered_roots(self):
+        rows = resolve_bone_rule_rows(
+            self.NAMES, [self.rule()], self.PARENTS, self.ALIGNED,
+        )
+
+        self.assertEqual(
+            [(row["bone_name"], row["chain_bones"]) for row in rows],
+            [
+                ("HairA_00", ["HairA_00", "HairA_01"]),
+                ("HairB_00", ["HairB_00", "HairB_01", "HairB_02"]),
+            ],
+        )
+
+    def test_later_rule_splits_chain_before_grouping(self):
+        rows = resolve_bone_rule_rows(
+            self.NAMES,
+            [
+                self.rule(),
+                self.rule(
+                    rule_id="tail",
+                    kind="EXACT",
+                    pattern="HairB_02",
+                    rigify_type="basic.raw_copy",
+                    apply_as_chain=False,
+                ),
+            ],
+            self.PARENTS,
+            self.ALIGNED,
+        )
+
+        self.assertEqual(
+            [(row["bone_name"], row["chain_bones"]) for row in rows],
+            [
+                ("HairA_00", ["HairA_00", "HairA_01"]),
+                ("HairB_00", ["HairB_00", "HairB_01"]),
+                ("HairB_02", []),
+            ],
+        )
+
+    def test_chain_rule_rejects_branch(self):
+        parents = {**self.PARENTS, "HairB_X": "HairB_00"}
+
+        with self.assertRaisesRegex(ConfigError, "branches at 'HairB_00'"):
+            resolve_bone_rule_rows(
+                [*self.NAMES, "HairB_X"],
+                [self.rule()],
+                parents,
+                {*self.ALIGNED, ("HairB_00", "HairB_X")},
+            )
+
+    def test_chain_rule_rejects_disjoint_edge(self):
+        with self.assertRaisesRegex(
+            ConfigError, "disjoint edge 'HairB_01' -> 'HairB_02'",
+        ):
+            resolve_bone_rule_rows(
+                self.NAMES,
+                [self.rule()],
+                self.PARENTS,
+                self.ALIGNED - {("HairB_01", "HairB_02")},
+            )
+
+    def test_chain_rule_rejects_cycle_without_a_root(self):
+        with self.assertRaisesRegex(ConfigError, "no reachable root"):
+            resolve_bone_rule_rows(
+                ["HairA_00", "HairA_01"],
+                [self.rule()],
+                {
+                    "HairA_00": "HairA_01",
+                    "HairA_01": "HairA_00",
+                },
+                {
+                    ("HairA_00", "HairA_01"),
+                    ("HairA_01", "HairA_00"),
+                },
+            )
+
+    def test_chain_rule_rejects_short_component(self):
+        with self.assertRaisesRegex(ConfigError, "requires at least 2 bones"):
+            resolve_bone_rule_rows(
+                ["HairA_00"],
+                [self.rule()],
+                self.PARENTS,
+                set(),
+            )
+
+    def test_chain_rule_rejects_unsupported_type(self):
+        with self.assertRaisesRegex(ConfigError, "does not support chain rules"):
+            resolve_bone_rule_rows(
+                self.NAMES,
+                [self.rule(rigify_type="basic.raw_copy")],
+                self.PARENTS,
+                self.ALIGNED,
+            )
+
+    def test_materialization_omits_claimed_children(self):
+        payload = {
+            "format": "re-rigify",
+            "schema_version": 1,
+            "bones": [],
+            "bone_rules": [self.rule()],
+            "collections": [],
+            "color_sets": [],
+        }
+
+        resolved = materialize_bone_rules(
+            payload,
+            self.NAMES,
+            self.PARENTS,
+            self.ALIGNED,
+        )
+
+        self.assertEqual(
+            [
+                (item["bone_name"], item["chain_bones"])
+                for item in resolved["bones"]
+            ],
+            [
+                ("HairA_00", ["HairA_00", "HairA_01"]),
+                ("HairB_00", ["HairB_00", "HairB_01", "HairB_02"]),
+            ],
         )
 
 

@@ -27,8 +27,14 @@ DEFAULT_COMPATIBILITY = {
 EXPLICIT_CHAIN_MIN_LENGTHS = {
     "limbs.arm": 3,
     "limbs.super_finger": 2,
+    "limbs.spline_tentacle": 2,
     "spines.basic_spine": 3,
     "spines.super_head": 2,
+}
+
+CHAIN_RULE_MIN_LENGTHS = {
+    "limbs.super_finger": 2,
+    "limbs.spline_tentacle": 2,
 }
 
 RIGIFY_DEFAULT_COLOR_SETS = (
@@ -229,36 +235,143 @@ def resolve_bone_rules(
     return {name: winners[name] for name in names if name in winners}
 
 
+def resolve_bone_rule_rows(
+    bone_names: Iterable[str],
+    rules: Iterable[dict[str, Any]],
+    parents: dict[str, str | None] | None = None,
+    aligned_edges: set[tuple[str, str]] | None = None,
+) -> list[dict[str, Any]]:
+    names = list(bone_names)
+    rule_list = list(rules)
+    winners = resolve_bone_rules(names, rule_list)
+    if not any(rule.get("apply_as_chain", False) for rule in rule_list):
+        return [{
+            "bone_name": name,
+            "rule": winners[name],
+            "chain_bones": [],
+        } for name in names if name in winners]
+    if parents is None or aligned_edges is None:
+        raise ConfigError("chain bone rules require source bone topology")
+
+    children: dict[str, list[str]] = {name: [] for name in names}
+    for child in names:
+        parent = parents.get(child)
+        if parent in children:
+            children[parent].append(child)
+
+    def same_winner(left: str, right: str) -> bool:
+        return (
+            left in winners
+            and right in winners
+            and winners[left]["rule_id"] == winners[right]["rule_id"]
+        )
+
+    rows = []
+    claimed = set()
+    for name in names:
+        rule = winners.get(name)
+        if rule is None:
+            continue
+        if not rule.get("apply_as_chain", False):
+            rows.append({
+                "bone_name": name,
+                "rule": rule,
+                "chain_bones": [],
+            })
+            claimed.add(name)
+            continue
+        minimum = CHAIN_RULE_MIN_LENGTHS.get(rule["rigify_type"])
+        if minimum is None:
+            raise ConfigError(
+                f"bone rule {rule['pattern']!r} Rigify type "
+                f"{rule['rigify_type']!r} does not support chain rules"
+            )
+        parent = parents.get(name)
+        if parent is not None and same_winner(parent, name):
+            continue
+        chain = [name]
+        current = name
+        while True:
+            matched_children = [
+                child for child in children.get(current, ())
+                if same_winner(current, child)
+            ]
+            if len(matched_children) > 1:
+                raise ConfigError(
+                    f"bone rule {rule['pattern']!r} chain branches "
+                    f"at {current!r}"
+                )
+            if not matched_children:
+                break
+            child = matched_children[0]
+            if (current, child) not in aligned_edges:
+                raise ConfigError(
+                    f"bone rule {rule['pattern']!r} has disjoint edge "
+                    f"{current!r} -> {child!r}"
+                )
+            chain.append(child)
+            current = child
+        if len(chain) < minimum:
+            raise ConfigError(
+                f"bone rule {rule['pattern']!r} chain at {name!r} "
+                f"requires at least {minimum} bones"
+            )
+        claimed.update(chain)
+        rows.append({
+            "bone_name": name,
+            "rule": rule,
+            "chain_bones": chain,
+        })
+
+    expected = {
+        name for name, rule in winners.items()
+        if rule.get("apply_as_chain", False)
+    }
+    unreachable = expected - claimed
+    if unreachable:
+        raise ConfigError(
+            "chain bone rule topology has no reachable root for "
+            f"{sorted(unreachable)!r}"
+        )
+    return rows
+
+
 def materialize_bone_rules(
     payload: dict[str, Any],
     bone_names: Iterable[str],
+    parents: dict[str, str | None] | None = None,
+    aligned_edges: set[tuple[str, str]] | None = None,
 ) -> dict[str, Any]:
     config = normalize_config(payload)
     names = list(bone_names)
     winners = resolve_bone_rules(names, config["bone_rules"])
+    rows = resolve_bone_rule_rows(
+        names, config["bone_rules"], parents, aligned_edges,
+    )
+    rows_by_name = {row["bone_name"]: row for row in rows}
     resolved = []
-    seen = set()
-    for item in config["bones"]:
-        name = item["bone_name"]
-        seen.add(name)
-        rule = winners.get(name)
-        resolved.append({
-            "bone_name": name,
+    emitted = set()
+
+    def materialized(row):
+        rule = row["rule"]
+        return {
+            "bone_name": row["bone_name"],
             "rigify_type": rule["rigify_type"],
-            "chain_bones": [],
+            "chain_bones": list(row["chain_bones"]),
             "parameters": deepcopy(rule["parameters"]),
             "compatibility": deepcopy(DEFAULT_COMPATIBILITY),
-        } if rule else item)
-    for name in names:
-        if name in winners and name not in seen:
-            rule = winners[name]
-            resolved.append({
-                "bone_name": name,
-                "rigify_type": rule["rigify_type"],
-                "chain_bones": [],
-                "parameters": deepcopy(rule["parameters"]),
-                "compatibility": deepcopy(DEFAULT_COMPATIBILITY),
-            })
+        }
+
+    for item in config["bones"]:
+        name = item["bone_name"]
+        if name not in winners:
+            resolved.append(item)
+        elif name in rows_by_name:
+            resolved.append(materialized(rows_by_name[name]))
+            emitted.add(name)
+    for row in rows:
+        if row["bone_name"] not in emitted:
+            resolved.append(materialized(row))
     return {**config, "bones": resolved}
 
 
@@ -422,6 +535,11 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         parameters = _require_type(
             item.get("parameters", {}), dict, f"bone_rules[{index}].parameters",
         )
+        apply_as_chain = _require_type(
+            item.get("apply_as_chain", False),
+            bool,
+            f"bone_rules[{index}].apply_as_chain",
+        )
         if not rule_id:
             raise ConfigError(f"bone_rules[{index}].rule_id is empty")
         if kind not in {"EXACT", "GLOB"}:
@@ -434,6 +552,7 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             "pattern": pattern,
             "rigify_type": rigify_type,
             "parameters": parameters,
+            "apply_as_chain": apply_as_chain,
         })
 
     for index, item in enumerate(collections):
@@ -529,7 +648,11 @@ def resolve_collection_rules(
 
 
 def validate_config(
-    payload: dict[str, Any], bone_names: Iterable[str], available_rig_types: Iterable[str]
+    payload: dict[str, Any],
+    bone_names: Iterable[str],
+    available_rig_types: Iterable[str],
+    parents: dict[str, str | None] | None = None,
+    aligned_edges: set[tuple[str, str]] | None = None,
 ) -> ValidationResult:
     try:
         config = normalize_config(payload)
@@ -537,7 +660,8 @@ def validate_config(
         return ValidationResult((str(exc),))
 
     errors: list[str] = []
-    names = set(bone_names)
+    ordered_names = list(bone_names)
+    names = set(ordered_names)
     rig_types = set(available_rig_types)
     seen_bones: set[str] = set()
     seen_collections: set[str] = set()
@@ -585,7 +709,9 @@ def validate_config(
         )
 
     try:
-        effective = materialize_bone_rules(config, names)
+        effective = materialize_bone_rules(
+            config, ordered_names, parents, aligned_edges,
+        )
     except ConfigError as exc:
         errors.append(str(exc))
         effective = config
