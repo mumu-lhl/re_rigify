@@ -83,6 +83,7 @@ def apply_collection_config(obj: bpy.types.Object, collections: list[dict]) -> N
         collection = armature.collections_all.get(source["name"])
         if collection is None:
             collection = armature.collections.new(source["name"])
+        collection.is_visible = source.get("visible_after_generation", True)
         collection.rigify_ui_row = source["ui_row"]
         collection.rigify_ui_title = source.get("ui_title", "")
         for name in resolved[source["name"]]:
@@ -96,6 +97,18 @@ def apply_collection_config(obj: bpy.types.Object, collections: list[dict]) -> N
         current_index = list(roots).index(collection)
         if current_index != target_index:
             roots.move(current_index, target_index)
+
+
+def apply_generated_collection_visibility(
+    rig: bpy.types.Object,
+    collections: list[dict],
+) -> None:
+    for source in collections:
+        collection = rig.data.collections_all.get(source["name"])
+        if collection is not None:
+            collection.is_visible = source.get(
+                "visible_after_generation", True,
+            )
 
 
 def apply_color_config(obj: bpy.types.Object, color_sets: list[dict], collections: list[dict]) -> None:
@@ -185,6 +198,9 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         result_obj = context.view_layer.objects.active
         if result_obj == duplicate and rigs:
             result_obj = rigs[-1]
+        apply_generated_collection_visibility(
+            result_obj, payload["collections"],
+        )
         rotation_drive_map = apply_roll_helpers(
             context, source, result_obj, compatibility_plan.roll_plans,
         )

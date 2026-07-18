@@ -563,6 +563,7 @@ class RERIGIFY_OT_CollectionAdd(bpy.types.Operator):
         settings = active_armature(context).data.re_rigify
         item = settings.collections.add()
         item.name = f"Collection {len(settings.collections)}"
+        item.last_valid_name = item.name
         item.ui_row = 1
         item.row_order = sum(1 for collection in list(settings.collections)[:-1] if collection.ui_row == 1)
         settings.active_collection_index = len(settings.collections) - 1
@@ -584,6 +585,13 @@ class RERIGIFY_OT_CollectionRemove(bpy.types.Operator):
             for bone in settings.bones:
                 parameters = json.loads(bone.parameters_json or "{}")
                 bone.parameters_json = json.dumps(
+                    remove_collection_references(parameters, name),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            for rule in settings.bone_rules:
+                parameters = json.loads(rule.parameters_json or "{}")
+                rule.parameters_json = json.dumps(
                     remove_collection_references(parameters, name),
                     ensure_ascii=False,
                     sort_keys=True,
@@ -629,6 +637,7 @@ class RERIGIFY_OT_CollectionDuplicate(bpy.types.Operator):
         source_row = source.ui_row
         source_order = source.row_order
         source_color = source.color_set_name
+        source_visibility = source.visible_after_generation
         source_active_rule = source.active_rule_index
         source_rules = [(rule.kind, rule.pattern) for rule in source.rules]
         for collection in settings.collections:
@@ -642,10 +651,12 @@ class RERIGIFY_OT_CollectionDuplicate(bpy.types.Operator):
                 if index < len(settings.collections) - 1
             ),
         )
+        duplicate.last_valid_name = duplicate.name
         duplicate.ui_title = source_title
         duplicate.ui_row = source_row
         duplicate.row_order = source_order + 1
         duplicate.color_set_name = source_color
+        duplicate.visible_after_generation = source_visibility
         for kind, pattern in source_rules:
             rule = duplicate.rules.add()
             rule.kind = kind

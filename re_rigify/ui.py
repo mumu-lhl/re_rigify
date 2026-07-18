@@ -661,6 +661,7 @@ class RERIGIFY_PT_Collections(_RERIGIFY_PT_Base, bpy.types.Panel):
             layout.use_property_split = True
             layout.use_property_decorate = False
             layout.prop(collection, "name")
+            layout.prop(collection, "visible_after_generation")
             layout.prop(collection, "ui_title")
             layout.prop_search(
                 collection, "color_set_name", settings, "color_sets", text="Color Set"

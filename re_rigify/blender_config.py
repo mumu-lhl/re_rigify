@@ -16,10 +16,12 @@ from .core import (
     SCHEMA_VERSION,
     normalize_compatibility,
     normalize_config,
+    rename_collection_references,
 )
 
 
 _carrier_updates_suspended = 0
+_collection_rename_updates_suspended = 0
 
 
 @contextmanager
@@ -30,6 +32,52 @@ def suspend_carrier_updates():
         yield
     finally:
         _carrier_updates_suspended -= 1
+
+
+@contextmanager
+def suspend_collection_rename_updates():
+    global _collection_rename_updates_suspended
+    _collection_rename_updates_suspended += 1
+    try:
+        yield
+    finally:
+        _collection_rename_updates_suspended -= 1
+
+
+def _rename_collection(item, _context):
+    if _collection_rename_updates_suspended:
+        return
+    settings = item.id_data.re_rigify
+    old_name = item.last_valid_name
+    new_name = item.name
+    if (
+        not old_name
+        or not new_name
+        or old_name == new_name
+        or any(
+            other != item and other.name == new_name
+            for other in settings.collections
+        )
+    ):
+        return
+    from .ui import flush_parameter_carrier, remove_parameter_carrier
+    flush_parameter_carrier()
+    remove_parameter_carrier()
+    for bone in settings.bones:
+        parameters = json.loads(bone.parameters_json or "{}")
+        bone.parameters_json = json.dumps(
+            rename_collection_references(parameters, old_name, new_name),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    for rule in settings.bone_rules:
+        parameters = json.loads(rule.parameters_json or "{}")
+        rule.parameters_json = json.dumps(
+            rename_collection_references(parameters, old_name, new_name),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    item.last_valid_name = new_name
 
 
 def _refresh_parameter_carrier(item, context):
@@ -132,7 +180,8 @@ class RERIGIFY_PG_BoneRule(bpy.types.PropertyGroup):
 
 
 class RERIGIFY_PG_CollectionConfig(bpy.types.PropertyGroup):
-    name: StringProperty(name="Collection")
+    name: StringProperty(name="Collection", update=_rename_collection)
+    last_valid_name: StringProperty(default="", options={"HIDDEN"})
     ui_title: StringProperty(name="Button Title")
     ui_row: IntProperty(name="UI Row", min=0, default=0)
     row_order: IntProperty(name="Order", min=0, default=0)
@@ -251,7 +300,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
     flush_parameter_carrier()
     remove_parameter_carrier()
     settings = armature.re_rigify
-    with suspend_carrier_updates():
+    with suspend_carrier_updates(), suspend_collection_rename_updates():
         settings.bones.clear()
         settings.bone_rules.clear()
         settings.collections.clear()
@@ -277,6 +326,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
         for source in payload["collections"]:
             item = settings.collections.add()
             item.name = source["name"]
+            item.last_valid_name = source["name"]
             item.ui_title = source["ui_title"]
             item.ui_row = source["ui_row"]
             item.row_order = source["row_order"]

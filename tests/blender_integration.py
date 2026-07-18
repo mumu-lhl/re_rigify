@@ -12,6 +12,7 @@ from re_rigify.compatibility import apply_compatibility_plan, build_compatibilit
 from re_rigify.core import DEFAULT_COMPATIBILITY
 from re_rigify.generate import (
     apply_collection_config,
+    apply_generated_collection_visibility,
     generate_rig,
     validate_bone_parameters,
 )
@@ -161,6 +162,27 @@ try:
     flush_parameter_carrier()
     assert json.loads(rule.parameters_json)["make_control"] is False
     assert get_rule_parameter_carrier(rule_source, rule, 0) == carrier
+    collection = rule_settings.collections.add()
+    collection.name = "Old FK"
+    collection.last_valid_name = "Old FK"
+    rule_settings.bones[0].parameters_json = json.dumps({
+        "fk_coll_refs": ["Old FK"],
+        "tweak_coll_refs": ["Old FK"],
+    })
+    rule.parameters_json = json.dumps({"fk_coll_refs": ["Old FK"]})
+    collection.name = "Renamed FK"
+    bone_parameters = json.loads(rule_settings.bones[0].parameters_json)
+    assert bone_parameters["fk_coll_refs"] == ["Renamed FK"]
+    assert bone_parameters["tweak_coll_refs"] == ["Renamed FK"]
+    assert json.loads(rule.parameters_json)["fk_coll_refs"] == ["Renamed FK"]
+    visible = rule_source.data.collections.new("Visible")
+    hidden = rule_source.data.collections.new("Hidden")
+    apply_generated_collection_visibility(rule_source, [
+        {"name": "Visible", "visible_after_generation": True},
+        {"name": "Hidden", "visible_after_generation": False},
+    ])
+    assert visible.is_visible
+    assert not hidden.is_visible
     rule_settings.bones[0].collection_selected = True
     rule_settings.active_bone_index = 0
     rule.pattern = "Finger_Index"
