@@ -738,7 +738,12 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
             if (
                 not managed
                 and item.rigify_type
-                in {"limbs.arm", "limbs.super_finger", "face.skin_eye"}
+                in {
+                    "limbs.arm",
+                    "limbs.super_finger",
+                    "spines.basic_tail",
+                    "face.skin_eye",
+                }
             ):
                 compatibility = layout.box()
                 compatibility.label(text="Compatibility")
@@ -753,7 +758,10 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
                         compatibility.prop_search(
                             item, "forearm_roll_bone", obj.data, "bones"
                         )
-                if item.rigify_type == "limbs.super_finger":
+                if item.rigify_type in {
+                    "limbs.super_finger",
+                    "spines.basic_tail",
+                }:
                     compatibility.prop(item, "force_connect_chain")
                 if item.rigify_type == "face.skin_eye":
                     compatibility.prop(item, "skin_eye_compatibility")

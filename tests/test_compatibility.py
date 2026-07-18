@@ -65,6 +65,23 @@ class ConnectionApplicationTests(unittest.TestCase):
 
 
 class ConnectedChainPlanningTests(unittest.TestCase):
+    def test_basic_tail_force_connect_builds_chain(self):
+        parents = {
+            "EarPhysics": None,
+            "Ear_01_L": "EarPhysics",
+            "Ear_02_L": "Ear_01_L",
+            "Ear_03_L": "Ear_02_L",
+        }
+
+        result = plan_connected_chain(
+            "Ear_01_L", "spines.basic_tail", parents, enabled=True,
+        )
+
+        self.assertEqual(result, [
+            ("Ear_01_L", "Ear_02_L", True),
+            ("Ear_02_L", "Ear_03_L", True),
+        ])
+
     def test_super_finger_force_connect_builds_three_bone_chain(self):
         parents = {
             "Wrist_R": None,

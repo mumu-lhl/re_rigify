@@ -724,7 +724,7 @@ class ConfigValidationTests(unittest.TestCase):
             ],
         )
 
-    def test_infers_disconnected_basic_tail_chain(self):
+    def test_basic_tail_does_not_connect_implicitly(self):
         parents = {
             "EarPhysics": None,
             "Ear_01_L": "EarPhysics",
@@ -736,9 +736,7 @@ class ConfigValidationTests(unittest.TestCase):
             parents,
         )
 
-        self.assertEqual(operations, [
-            ("Ear_01_L", "Ear_02_L", True),
-        ])
+        self.assertEqual(operations, [])
         self.assertEqual(
             EXPLICIT_CHAIN_MIN_LENGTHS["spines.basic_tail"],
             2,

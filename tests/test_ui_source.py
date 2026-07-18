@@ -286,6 +286,7 @@ class PanelStructureTests(unittest.TestCase):
             "lower_lid_pattern",
             "synthetic_lids_fallback",
         }.issubset(drawn_properties))
+        self.assertIn("spines.basic_tail", ast.unparse(panel))
 
     def test_parameter_panel_routes_rigify_operators_to_carrier(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")

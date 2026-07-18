@@ -496,16 +496,6 @@ def infer_rigify_topology(
             if parent := parents.get(root):
                 operations.append((parent, root, False))
             operations.append((root, head, True))
-        elif rig_type == "spines.basic_tail":
-            chain = unique_child_chain(root, parents)
-            if len(chain) < 2:
-                raise ConfigError(
-                    f"{root!r} ({rig_type}) requires a chain of at least 2 bones"
-                )
-            operations.extend(
-                (parent, child, True)
-                for parent, child in zip(chain, chain[1:])
-            )
     return operations
 
 

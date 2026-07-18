@@ -12,6 +12,7 @@ from .core import ConfigError, choose_drive_target, unique_child_chain
 
 CHAIN_MIN_LENGTHS = {
     "limbs.super_finger": 2,
+    "spines.basic_tail": 2,
 }
 
 
