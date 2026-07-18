@@ -6,7 +6,7 @@ import json
 
 import bpy
 
-from .core import choose_drive_spec
+from .core import choose_drive_spec, resolve_bone_rule_rows
 
 
 CONSTRAINT_PREFIX = "Re-Rigify Drive"
@@ -187,22 +187,23 @@ def remove_drive_helpers(rig: bpy.types.Object | None) -> int:
 
 
 def _chain_rule_bone_names(source: bpy.types.Object) -> set[str]:
+    from .rules import armature_rule_topology, rule_dicts
+
     settings = getattr(source.data, "re_rigify", None)
-    if settings is None:
+    if settings is None or not settings.bone_rules:
         return set()
-    chain_rule_ids = {
-        rule.rule_id
-        for rule in settings.bone_rules
-        if rule.apply_as_chain and rule.rule_id
-    }
+    parents, aligned_edges = armature_rule_topology(source.data)
+    rows = resolve_bone_rule_rows(
+        source.data.bones.keys(),
+        rule_dicts(settings),
+        parents,
+        aligned_edges,
+    )
     return {
         bone_name
-        for item in settings.bones
-        if item.managed_rule_id in chain_rule_ids
-        for bone_name in (
-            [entry.bone_name for entry in item.chain_bones]
-            or [item.bone_name]
-        )
+        for row in rows
+        if row["rule"].get("apply_as_chain", False)
+        for bone_name in row["chain_bones"]
     }
 
 

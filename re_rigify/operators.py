@@ -109,14 +109,23 @@ def validate_active(context):
 
 
 def synchronized_payload(obj, include_managed=True):
-    from .rules import sync_bone_rules
+    from .rules import armature_rule_topology, cleanup_bone_rule_rows
     from .ui import flush_parameter_carrier, remove_parameter_carrier
 
     flush_parameter_carrier()
     remove_parameter_carrier()
-    sync_bone_rules(obj.data)
-    return armature_to_payload(
-        obj.data, include_managed=include_managed,
+    cleanup_bone_rule_rows(obj.data)
+    payload = armature_to_payload(
+        obj.data, include_managed=False,
+    )
+    if not include_managed:
+        return payload
+    parents, aligned_edges = armature_rule_topology(obj.data)
+    return materialize_bone_rules(
+        payload,
+        obj.data.bones.keys(),
+        parents,
+        aligned_edges,
     )
 
 

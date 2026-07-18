@@ -1,17 +1,14 @@
-"""Materialize persistent bone rules into configured bone rows."""
+"""Resolve bone rules without persisting their derived bone rows."""
 
 from __future__ import annotations
 
 import json
 
 from .blender_config import (
-    _apply_compatibility_to_item,
-    apply_chain_bones_to_item,
     suspend_carrier_updates,
 )
 from .core import (
-    DEFAULT_COMPATIBILITY,
-    resolve_bone_rule_rows,
+    ConfigError,
     resolve_bone_rules,
 )
 
@@ -50,79 +47,30 @@ def armature_rule_topology(armature) -> tuple[
     return parents, aligned_edges
 
 
-def sync_bone_rules(armature) -> tuple[int, int, int]:
+def cleanup_bone_rule_rows(armature) -> int:
     settings = armature.re_rigify
     rules = rule_dicts(settings)
-    parents, aligned_edges = armature_rule_topology(armature)
-    winners = (
-        resolve_bone_rules(armature.bones.keys(), rules)
-        if rules else {}
-    )
-    rows = (
-        resolve_bone_rule_rows(
-            armature.bones.keys(), rules, parents, aligned_edges,
-        )
-        if rules else []
-    )
-    desired = {row["bone_name"]: row for row in rows}
-    claimed_names = set(winners)
-    active_name = (
-        settings.bones[settings.active_bone_index].bone_name
-        if settings.bones else None
-    )
-    active_root = next(
-        (
-            row["bone_name"] for row in rows
-            if active_name in row["chain_bones"]
-        ),
-        active_name,
-    )
+    claimed_names = set()
+    if rules:
+        try:
+            claimed_names = set(resolve_bone_rules(
+                armature.bones.keys(), rules,
+            ))
+        except ConfigError:
+            pass
     remove_indices = [
         index for index, item in enumerate(settings.bones)
-        if (
-            (item.managed_rule_id and item.bone_name not in desired)
-            or (
-                item.bone_name in claimed_names
-                and item.bone_name not in desired
-            )
-        )
+        if item.managed_rule_id or item.bone_name in claimed_names
     ]
-    added = updated = 0
     with suspend_carrier_updates():
         for index in reversed(remove_indices):
             settings.bones.remove(index)
-        for row in rows:
-            bone_name = row["bone_name"]
-            rule = row["rule"]
-            item = next(
-                (
-                    candidate for candidate in settings.bones
-                    if candidate.bone_name == bone_name
-                ),
-                None,
-            )
-            if item is None:
-                item = settings.bones.add()
-                item.bone_name = bone_name
-                added += 1
-            else:
-                updated += 1
-            item.managed_rule_id = rule["rule_id"]
-            item.rigify_type = rule["rigify_type"]
-            item.parameters_json = json.dumps(
-                rule["parameters"], ensure_ascii=False, sort_keys=True,
-            )
-            apply_chain_bones_to_item(item, row["chain_bones"])
-            _apply_compatibility_to_item(item, DEFAULT_COMPATIBILITY)
-        if active_root:
-            settings.active_bone_index = next(
-                (
-                    index for index, item in enumerate(settings.bones)
-                    if item.bone_name == active_root
-                ),
-                min(
-                    settings.active_bone_index,
-                    max(0, len(settings.bones) - 1),
-                ),
-            )
-    return added, updated, len(remove_indices)
+        settings.active_bone_index = min(
+            settings.active_bone_index,
+            max(0, len(settings.bones) - 1),
+        )
+    return len(remove_indices)
+
+
+def sync_bone_rules(armature) -> tuple[int, int, int]:
+    return 0, 0, cleanup_bone_rule_rows(armature)

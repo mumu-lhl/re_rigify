@@ -21,7 +21,7 @@ from re_rigify.operators import (
     synchronized_payload,
     validate_active,
 )
-from re_rigify.rules import sync_bone_rules
+from re_rigify.rules import cleanup_bone_rule_rows, sync_bone_rules
 from re_rigify.drive import (
     DRIVE_MAP_PROPERTY,
     DRIVER_BONE_PREFIX,
@@ -172,25 +172,56 @@ try:
     chain_rule.pattern = "Hair*"
     chain_rule.rigify_type = "limbs.spline_tentacle"
     chain_rule.apply_as_chain = True
-    assert sync_bone_rules(chain_source.data) == (2, 0, 0)
-    assert [item.bone_name for item in chain_settings.bones] == [
-        "HairA_00", "HairB_00",
-    ]
-    assert [
-        [entry.bone_name for entry in item.chain_bones]
-        for item in chain_settings.bones
-    ] == [
-        ["HairA_00", "HairA_01"],
-        ["HairB_00", "HairB_01", "HairB_02"],
-    ]
+    legacy = chain_settings.bones.add()
+    legacy.bone_name = "HairA_00"
+    legacy.managed_rule_id = "hair"
+    manual_claimed = chain_settings.bones.add()
+    manual_claimed.bone_name = "HairB_00"
+    manual_claimed.rigify_type = "basic.raw_copy"
+    assert cleanup_bone_rule_rows(chain_source.data) == 2
+    assert list(chain_settings.bones) == []
     assert not any(
         chain_source.data.bones[name].use_connect
         for name in ("HairA_01", "HairB_01", "HairB_02")
     )
-    chain_canonical = armature_to_payload(
-        chain_source.data, include_managed=False,
+    chain_canonical = synchronized_payload(
+        chain_source, include_managed=False,
+    )
+    chain_resolved = synchronized_payload(
+        chain_source, include_managed=True,
     )
     assert chain_canonical["bone_rules"][0]["apply_as_chain"] is True
+    assert chain_canonical["bones"] == []
+    assert [
+        item["bone_name"] for item in chain_resolved["bones"]
+    ] == ["HairA_00", "HairB_00"]
+    assert [
+        item["chain_bones"] for item in chain_resolved["bones"]
+    ] == [
+        ["HairA_00", "HairA_01"],
+        ["HairB_00", "HairB_01", "HairB_02"],
+    ]
+    assert list(chain_settings.bones) == []
+    chain_rig = chain_source.copy()
+    chain_rig.data = chain_source.data.copy()
+    bpy.context.scene.collection.objects.link(chain_rig)
+    connect_source_to_rig(chain_source, chain_rig)
+    assert all(
+        chain_rig.data.bones[f"{DRIVER_BONE_PREFIX}{name}"].inherit_scale
+        == "NONE"
+        for name in (
+            "HairA_00", "HairA_01",
+            "HairB_00", "HairB_01", "HairB_02",
+        )
+    )
+    assert (
+        chain_rig.data.bones[f"{DRIVER_BONE_PREFIX}Head"].inherit_scale
+        == "FULL"
+    )
+    remove_drive_constraints(chain_source)
+    chain_rig_data = chain_rig.data
+    bpy.data.objects.remove(chain_rig, do_unlink=True)
+    bpy.data.armatures.remove(chain_rig_data)
     chain_data = chain_source.data
     bpy.data.objects.remove(chain_source, do_unlink=True)
     bpy.data.armatures.remove(chain_data)
@@ -205,11 +236,11 @@ try:
     rule.pattern = "Finger_*"
     rule.rigify_type = "basic.super_copy"
     rule.parameters_json = '{"make_control": true}'
-    assert sync_bone_rules(rule_source.data) == (2, 0, 0)
-    assert [item.bone_name for item in rule_settings.bones] == [
-        "Finger_Index", "Finger_Middle",
-    ]
-    assert all(item.managed_rule_id == "fingers" for item in rule_settings.bones)
+    manual_root = rule_settings.bones.add()
+    manual_root.bone_name = "Root"
+    manual_root.rigify_type = "basic.raw_copy"
+    assert sync_bone_rules(rule_source.data) == (0, 0, 0)
+    assert [item.bone_name for item in rule_settings.bones] == ["Root"]
     carrier = prepare_rule_parameter_carrier(
         bpy.context, rule_source, rule, 0,
     )
@@ -221,13 +252,13 @@ try:
     collection = rule_settings.collections.add()
     collection.name = "Old FK"
     collection.last_valid_name = "Old FK"
-    rule_settings.bones[0].parameters_json = json.dumps({
+    manual_root.parameters_json = json.dumps({
         "fk_coll_refs": ["Old FK"],
         "tweak_coll_refs": ["Old FK"],
     })
     rule.parameters_json = json.dumps({"fk_coll_refs": ["Old FK"]})
     collection.name = "Renamed FK"
-    bone_parameters = json.loads(rule_settings.bones[0].parameters_json)
+    bone_parameters = json.loads(manual_root.parameters_json)
     assert bone_parameters["fk_coll_refs"] == ["Renamed FK"]
     assert bone_parameters["tweak_coll_refs"] == ["Renamed FK"]
     assert json.loads(rule.parameters_json)["fk_coll_refs"] == ["Renamed FK"]
@@ -241,22 +272,24 @@ try:
     assert not hidden.is_visible
     rule.rigify_type = "basic.raw_copy"
     rule.parameters_json = "{}"
-    rule_settings.bones[0].collection_selected = True
+    manual_root.collection_selected = True
     rule_settings.active_bone_index = 0
     rule.pattern = "Finger_Index"
     added, _updated, removed = sync_bone_rules(rule_source.data)
-    assert (added, removed) == (0, 1)
+    assert (added, removed) == (0, 0)
     active_rule_bone = rule_settings.bones[rule_settings.active_bone_index]
-    assert active_rule_bone.bone_name == "Finger_Index"
+    assert active_rule_bone.bone_name == "Root"
     assert active_rule_bone.collection_selected
     checked, errors = validate_active(bpy.context)
     assert checked == rule_source
     assert not errors
-    assert any(item.managed_rule_id for item in rule_settings.bones)
+    assert not any(item.managed_rule_id for item in rule_settings.bones)
     canonical = synchronized_payload(rule_source, include_managed=False)
     resolved = synchronized_payload(rule_source, include_managed=True)
-    assert not canonical["bones"]
-    assert [item["bone_name"] for item in resolved["bones"]] == ["Finger_Index"]
+    assert [item["bone_name"] for item in canonical["bones"]] == ["Root"]
+    assert [item["bone_name"] for item in resolved["bones"]] == [
+        "Root", "Finger_Index",
+    ]
     assert canonical["bone_rules"][0]["rule_id"] == "fingers"
     rule_import = make_armature(
         "Rule Import", ["Root", "Finger_Index", "Finger_Middle"],
@@ -264,8 +297,11 @@ try:
     payload_to_armature(rule_import.data, canonical)
     assert [
         item.bone_name for item in rule_import.data.re_rigify.bones
-        if item.managed_rule_id
-    ] == ["Finger_Index"]
+    ] == ["Root"]
+    assert not any(
+        item.managed_rule_id
+        for item in rule_import.data.re_rigify.bones
+    )
     rule_import_data = rule_import.data
     bpy.data.objects.remove(rule_import, do_unlink=True)
     bpy.data.armatures.remove(rule_import_data)
@@ -416,12 +452,6 @@ try:
     assert {bone.name for bone in collection.bones} == {"upper_arm.L", "upper_arm.R"}
 
     source_bind_matrix = source.pose.bones["spine"].matrix.copy()
-    chain_drive_rule = settings.bone_rules.add()
-    chain_drive_rule.rule_id = "drive-chain"
-    chain_drive_rule.apply_as_chain = True
-    settings.bones[0].managed_rule_id = chain_drive_rule.rule_id
-    chain_entry = settings.bones[0].chain_bones.add()
-    chain_entry.bone_name = "spine"
     mapped, unmatched = connect_source_to_rig(source, duplicate)
     bpy.context.view_layer.update()
     assert mapped == len(source.pose.bones)
@@ -450,11 +480,7 @@ try:
     assert constraint.target_space == "WORLD"
     helper = duplicate.pose.bones[f"{DRIVER_BONE_PREFIX}spine"]
     assert helper.parent == duplicate.pose.bones["spine"]
-    assert duplicate.data.bones[helper.name].inherit_scale == "NONE"
-    assert (
-        duplicate.data.bones[f"{DRIVER_BONE_PREFIX}upper_arm.L"].inherit_scale
-        == "FULL"
-    )
+    assert duplicate.data.bones[helper.name].inherit_scale == "FULL"
     assert not helper.constraints
     for obj in bpy.context.selected_objects:
         obj.select_set(False)
