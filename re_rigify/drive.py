@@ -18,19 +18,78 @@ DISCONNECTED_BONES_PROPERTY = "re_rigify_drive_disconnected_bones"
 _upgrade_enabled = False
 
 
-def _restore_object_context(active, selected, mode) -> None:
+def _context_state():
     context = bpy.context
-    if context.object and context.object.mode != "OBJECT":
-        bpy.ops.object.mode_set(mode="OBJECT")
-    for obj in context.selected_objects:
-        obj.select_set(False)
-    for obj in selected:
-        if obj.name in bpy.data.objects:
+    active = context.view_layer.objects.active
+    return (
+        active.name if active is not None else None,
+        [obj.name for obj in context.view_layer.objects if obj.select_get()],
+        context.object.mode if context.object else "OBJECT",
+    )
+
+
+def _set_object_mode(obj: bpy.types.Object, mode: str) -> None:
+    context = bpy.context
+    if obj.name not in context.view_layer.objects:
+        raise RuntimeError(f"Armature {obj.name!r} is not in the active view layer")
+    obj.hide_set(False)
+    obj.hide_select = False
+    obj.select_set(True)
+    context.view_layer.objects.active = obj
+    selected = [
+        candidate for candidate in context.view_layer.objects
+        if candidate.select_get()
+    ]
+    with context.temp_override(
+        object=obj,
+        active_object=obj,
+        selected_objects=selected,
+        selected_editable_objects=selected,
+    ):
+        bpy.ops.object.mode_set(mode=mode)
+
+
+def _restore_object_context(active_name, selected_names, mode) -> None:
+    context = bpy.context
+    current = context.view_layer.objects.active
+    if current is not None and current.mode != "OBJECT":
+        _set_object_mode(current, "OBJECT")
+    for obj in context.view_layer.objects:
+        if obj.select_get():
+            obj.select_set(False)
+    for name in selected_names:
+        obj = bpy.data.objects.get(name)
+        if obj is not None and obj.name in context.view_layer.objects:
             obj.select_set(True)
-    if active is not None and active.name in bpy.data.objects:
-        context.view_layer.objects.active = active
-        if mode != "OBJECT":
-            bpy.ops.object.mode_set(mode=mode)
+    active = bpy.data.objects.get(active_name) if active_name else None
+    if active is None or active.name not in context.view_layer.objects:
+        context.view_layer.objects.active = None
+        return
+    active.select_set(True)
+    context.view_layer.objects.active = active
+    if mode != "OBJECT":
+        try:
+            _set_object_mode(active, mode)
+        except RuntimeError:
+            if active.mode != "OBJECT":
+                _set_object_mode(active, "OBJECT")
+
+
+def _ensure_object_mode(obj: bpy.types.Object) -> None:
+    if obj.mode != "OBJECT":
+        try:
+            _set_object_mode(obj, "OBJECT")
+        except RuntimeError:
+            pass
+
+
+def _restore_visibility(obj, hidden, hide_select) -> None:
+    try:
+        if obj.name in bpy.data.objects:
+            obj.hide_select = hide_select
+            obj.hide_set(hidden)
+    except ReferenceError:
+        pass
 
 
 def _set_bone_connections(
@@ -41,22 +100,22 @@ def _set_bone_connections(
     if not bone_names:
         return
     context = bpy.context
-    previous_active = context.view_layer.objects.active
-    previous_selected = list(context.selected_objects)
-    previous_mode = context.object.mode if context.object else "OBJECT"
+    previous_active, previous_selected, previous_mode = _context_state()
     try:
         if context.object and context.object.mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
-        for obj in context.selected_objects:
+            _set_object_mode(context.object, "OBJECT")
+        for obj in context.view_layer.objects:
+            if not obj.select_get():
+                continue
             obj.select_set(False)
         source.select_set(True)
         context.view_layer.objects.active = source
-        bpy.ops.object.mode_set(mode="EDIT")
+        _set_object_mode(source, "EDIT")
         for bone_name in bone_names:
             bone = source.data.edit_bones.get(bone_name)
             if bone is not None and bone.parent is not None:
                 bone.use_connect = connected
-        bpy.ops.object.mode_set(mode="OBJECT")
+        _set_object_mode(source, "OBJECT")
     finally:
         _restore_object_context(previous_active, previous_selected, previous_mode)
 
@@ -96,27 +155,33 @@ def remove_drive_helpers(rig: bpy.types.Object | None) -> int:
     if rig is None or rig.type != "ARMATURE":
         return 0
     context = bpy.context
-    previous_active = context.view_layer.objects.active
-    previous_selected = list(context.selected_objects)
-    previous_mode = context.object.mode if context.object else "OBJECT"
+    previous_active, previous_selected, previous_mode = _context_state()
+    hidden = rig.hide_get()
+    hide_select = rig.hide_select
     removed = 0
     try:
         if context.object and context.object.mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
-        for obj in context.selected_objects:
+            _set_object_mode(context.object, "OBJECT")
+        for obj in context.view_layer.objects:
+            if not obj.select_get():
+                continue
             obj.select_set(False)
+        rig.hide_set(False)
+        rig.hide_select = False
         rig.select_set(True)
         context.view_layer.objects.active = rig
-        bpy.ops.object.mode_set(mode="EDIT")
+        _set_object_mode(rig, "EDIT")
         for bone in list(rig.data.edit_bones):
             if bone.name.startswith(DRIVER_BONE_PREFIX):
                 rig.data.edit_bones.remove(bone)
                 removed += 1
-        bpy.ops.object.mode_set(mode="OBJECT")
+        _set_object_mode(rig, "OBJECT")
         collection = rig.data.collections_all.get(DRIVER_COLLECTION_NAME)
         if collection is not None and not collection.bones:
             rig.data.collections.remove(collection)
     finally:
+        _ensure_object_mode(rig)
+        _restore_visibility(rig, hidden, hide_select)
         _restore_object_context(previous_active, previous_selected, previous_mode)
     return removed
 
@@ -131,19 +196,19 @@ def _build_drive_helpers(
         return {}
 
     context = bpy.context
-    previous_active = context.view_layer.objects.active
-    previous_selected = list(context.selected_objects)
-    previous_mode = context.object.mode if context.object else "OBJECT"
+    previous_active, previous_selected, previous_mode = _context_state()
     helper_names: dict[str, str] = {}
     source_to_rig = rig.matrix_world.inverted_safe() @ source.matrix_world
     try:
         if context.object and context.object.mode != "OBJECT":
-            bpy.ops.object.mode_set(mode="OBJECT")
-        for obj in context.selected_objects:
+            _set_object_mode(context.object, "OBJECT")
+        for obj in context.view_layer.objects:
+            if not obj.select_get():
+                continue
             obj.select_set(False)
         rig.select_set(True)
         context.view_layer.objects.active = rig
-        bpy.ops.object.mode_set(mode="EDIT")
+        _set_object_mode(rig, "EDIT")
 
         for source_name, target_name in targets.items():
             source_bone = source.data.bones[source_name]
@@ -158,7 +223,7 @@ def _build_drive_helpers(
             helper.use_deform = False
             helper_names[source_name] = helper.name
 
-        bpy.ops.object.mode_set(mode="OBJECT")
+        _set_object_mode(rig, "OBJECT")
         collection = rig.data.collections_all.get(DRIVER_COLLECTION_NAME)
         if collection is None:
             collection = rig.data.collections.new(DRIVER_COLLECTION_NAME)
@@ -167,7 +232,7 @@ def _build_drive_helpers(
             collection.assign(rig.data.bones[helper_name])
 
         context.view_layer.update()
-        bpy.ops.object.mode_set(mode="POSE")
+        _set_object_mode(rig, "POSE")
         for source_name, helper_name in helper_names.items():
             # Keep the source rest transform as the constant offset from the selected
             # Rigify target. Parent motion then drives the adapter without assuming that

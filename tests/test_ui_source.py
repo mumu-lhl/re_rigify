@@ -22,6 +22,25 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_save_flushes_and_removes_parameter_carrier(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        handler = next(
+            node for node in tree.body
+            if isinstance(node, ast.FunctionDef) and node.name == "_save_pre"
+        )
+        calls = [
+            node.value.func.id
+            for node in handler.body
+            if isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Call)
+            and isinstance(node.value.func, ast.Name)
+        ]
+        self.assertEqual(
+            calls,
+            ["flush_parameter_carrier", "remove_parameter_carrier"],
+        )
+
     def test_workflow_uses_nested_panels(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

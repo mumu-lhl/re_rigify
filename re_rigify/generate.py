@@ -158,7 +158,8 @@ def cleanup_metarigs(source: bpy.types.Object, keep: bpy.types.Object | None = N
 
 def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: dict) -> bpy.types.Object:
     previous_active = context.view_layer.objects.active
-    previous_selected = list(context.selected_objects)
+    previous_active_name = previous_active.name if previous_active else None
+    previous_selected_names = [obj.name for obj in context.selected_objects]
     previous_mode = source.mode
     duplicate = None
     before = set(bpy.data.objects)
@@ -212,10 +213,15 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
             bpy.ops.object.mode_set(mode="OBJECT")
         for obj in context.selected_objects:
             obj.select_set(False)
-        for obj in previous_selected:
-            if obj.name in bpy.data.objects:
+        for name in previous_selected_names:
+            obj = bpy.data.objects.get(name)
+            if obj is not None and obj.name in context.view_layer.objects:
                 obj.select_set(True)
-        if previous_active and previous_active.name in bpy.data.objects:
+        previous_active = (
+            bpy.data.objects.get(previous_active_name)
+            if previous_active_name else None
+        )
+        if previous_active and previous_active.name in context.view_layer.objects:
             context.view_layer.objects.active = previous_active
             if previous_mode != "OBJECT":
                 try:

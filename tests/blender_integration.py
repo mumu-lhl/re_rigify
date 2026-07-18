@@ -9,7 +9,11 @@ import re_rigify
 from re_rigify.blender_config import armature_to_payload, payload_to_armature
 from re_rigify.compatibility import apply_compatibility_plan, build_compatibility_plan
 from re_rigify.core import DEFAULT_COMPATIBILITY
-from re_rigify.generate import apply_collection_config, validate_bone_parameters
+from re_rigify.generate import (
+    apply_collection_config,
+    generate_rig,
+    validate_bone_parameters,
+)
 from re_rigify.operators import select_only
 from re_rigify.drive import (
     DRIVE_MAP_PROPERTY,
@@ -20,6 +24,7 @@ from re_rigify.drive import (
 )
 from re_rigify.ui import (
     _load_pending_parameter_carrier,
+    _save_pre,
     flush_parameter_carrier,
     get_parameter_carrier,
     prepare_parameter_carrier,
@@ -233,7 +238,15 @@ try:
     helper = duplicate.pose.bones[f"{DRIVER_BONE_PREFIX}spine"]
     assert helper.parent == duplicate.pose.bones["spine"]
     assert not helper.constraints
-    assert remove_drive_constraints(source) == mapped
+    for obj in bpy.context.selected_objects:
+        obj.select_set(False)
+    bpy.context.view_layer.objects.active = None
+    with bpy.context.temp_override(
+        object=None, active_object=None, selected_objects=[]
+    ):
+        assert remove_drive_constraints(source) == mapped
+        assert bpy.ops.re_rigify.remove_drive() == {"CANCELLED"}
+    assert bpy.context.view_layer.objects.active is None
     assert source.data.bones["upper_arm.L"].use_connect
     duplicate.pose.bones["spine"].matrix_basis.identity()
     bpy.context.view_layer.update()
@@ -263,8 +276,9 @@ try:
     assert get_parameter_carrier(source, item, 0) == carrier
     before = item.parameters_json
     carrier.rigify_parameters.relink_constraints = not carrier.rigify_parameters.relink_constraints
-    flush_parameter_carrier()
+    _save_pre("")
     assert item.parameters_json != before
+    assert bpy.data.objects.get(re_rigify.ui.HELPER_NAME) is None
 
     ref_item = settings.bones[1]
     ref_item.rigify_type = "limbs.arm"
@@ -331,6 +345,40 @@ try:
     }])
     assert len(errors) == 1
     assert "unknown" in errors[0]
+
+    regen = make_armature("Regenerate Source", ["root"])
+    regen_payload = {
+        "format": "re-rigify",
+        "schema_version": 1,
+        "bones": [{
+            "bone_name": "root",
+            "rigify_type": "basic.raw_copy",
+            "chain_bones": [],
+            "parameters": {},
+            "compatibility": DEFAULT_COMPATIBILITY,
+        }],
+        "collections": [{
+            "name": "Main",
+            "ui_title": "Main",
+            "ui_row": 1,
+            "row_order": 0,
+            "color_set": "",
+            "rules": [{"kind": "EXACT", "pattern": "root"}],
+        }],
+        "color_sets": [],
+    }
+    assert generate_rig(bpy.context, regen, regen_payload) is not None
+    stale = regen.copy()
+    stale.data = regen.data.copy()
+    stale.name = "Regenerate Source_metarig.999"
+    bpy.context.scene.collection.objects.link(stale)
+    stale.re_rigify_source_armature = regen
+    stale_name = stale.name
+    regen.re_rigify_generated_rig = None
+    regen.re_rigify_metarig = None
+    select_only(bpy.context, stale)
+    assert generate_rig(bpy.context, regen, regen_payload) is not None
+    assert bpy.data.objects.get(stale_name) is None
 finally:
     re_rigify.unregister()
 

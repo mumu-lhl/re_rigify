@@ -151,6 +151,7 @@ def flush_parameter_carrier():
 
 def _save_pre(_filepath):
     flush_parameter_carrier()
+    remove_parameter_carrier()
 
 
 def remove_parameter_carrier():

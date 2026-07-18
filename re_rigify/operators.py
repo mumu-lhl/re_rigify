@@ -840,7 +840,15 @@ class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
     bl_options = {"UNDO"}
 
     def execute(self, context):
-        removed = remove_drive_constraints(active_armature(context))
+        source = active_armature(context)
+        if source is None:
+            self.report({"WARNING"}, "Select the source armature")
+            return {"CANCELLED"}
+        try:
+            removed = remove_drive_constraints(source)
+        except Exception as exc:
+            self.report({"WARNING"}, f"Failed to remove Rigify drive: {exc}")
+            return {"CANCELLED"}
         self.report({"INFO"}, f"Removed {removed} Re-Rigify constraints")
         return {"FINISHED"}
 
