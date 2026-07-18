@@ -6,7 +6,7 @@ import json
 
 import bpy
 
-from .core import EXPLICIT_CHAIN_MIN_LENGTHS
+from .core import ConfigError, EXPLICIT_CHAIN_MIN_LENGTHS, resolve_bone_rules
 from .rigify_adapter import (
     RigifyParameterLayout,
     apply_parameters,
@@ -18,8 +18,9 @@ from .rigify_adapter import (
 HELPER_NAME = "__ReRigify_Parameter_Carrier__"
 _bound_armature_name = None
 _bound_armature_pointer = 0
-_bound_index = -1
-_bound_bone_name = None
+_bound_kind = None
+_bound_key = None
+_bound_source_bone_name = None
 _pending_binding = None
 
 
@@ -29,20 +30,58 @@ def refresh_rigify_types(context):
     build_type_list(context, context.window_manager.rigify_types)
 
 
-def _carrier_key(source, item, index):
-    return f"{source.data.name}:{index}:{item.bone_name}:{item.rigify_type}"
+def _carrier_key(source, target_kind, target_key, bone_name, rigify_type):
+    return (
+        f"{source.data.name}:{target_kind}:{target_key}:"
+        f"{bone_name}:{rigify_type}"
+    )
+
+
+def _get_parameter_carrier(
+    source, target_kind, target_key, source_bone_name, rigify_type,
+):
+    obj = bpy.data.objects.get(HELPER_NAME)
+    if (
+        obj is None
+        or obj.get("re_rigify_source")
+        != f"{source.data.name}:{len(source.data.bones)}"
+    ):
+        return None
+    if obj.get("re_rigify_key") != _carrier_key(
+        source, target_kind, target_key, source_bone_name, rigify_type,
+    ):
+        return None
+    return obj.pose.bones.get(source_bone_name) if obj.pose else None
 
 
 def get_parameter_carrier(source, item, index):
-    obj = bpy.data.objects.get(HELPER_NAME)
-    if obj is None or obj.get("re_rigify_source") != f"{source.data.name}:{len(source.data.bones)}":
-        return None
-    if obj.get("re_rigify_key") != _carrier_key(source, item, index):
-        return None
-    return obj.pose.bones.get(item.bone_name) if obj.pose else None
+    return _get_parameter_carrier(
+        source, "BONE", index, item.bone_name, item.rigify_type,
+    )
 
 
-def prepare_parameter_carrier(context, source, item, index):
+def _rule_source_bone(source, rule_index):
+    from .rules import rule_dicts
+    matches = resolve_bone_rules(
+        source.data.bones.keys(),
+        [rule_dicts(source.data.re_rigify)[rule_index]],
+    )
+    return next(iter(matches))
+
+
+def get_rule_parameter_carrier(source, rule, rule_index):
+    try:
+        source_bone_name = _rule_source_bone(source, rule_index)
+    except (ConfigError, IndexError, StopIteration, json.JSONDecodeError):
+        return None
+    return _get_parameter_carrier(
+        source, "RULE", rule.rule_id, source_bone_name, rule.rigify_type,
+    )
+
+
+def _prepare_parameter_carrier(
+    context, source, target, target_kind, target_key, source_bone_name,
+):
     """Create/sync the helper from an operator or RNA update, never from Panel.draw."""
     try:
         if bpy.data.objects.get(source.name) != source or source.as_pointer() == 0:
@@ -52,7 +91,10 @@ def prepare_parameter_carrier(context, source, item, index):
     flush_parameter_carrier()
     obj = bpy.data.objects.get(HELPER_NAME)
     source_key = f"{source.data.name}:{len(source.data.bones)}"
-    if obj is not None and (obj.get("re_rigify_source") != source_key or item.bone_name not in obj.pose.bones):
+    if obj is not None and (
+        obj.get("re_rigify_source") != source_key
+        or source_bone_name not in obj.pose.bones
+    ):
         remove_parameter_carrier()
         obj = None
     if obj is None:
@@ -75,22 +117,45 @@ def prepare_parameter_carrier(context, source, item, index):
         "ui_title": collection.ui_title,
         "ui_row": collection.ui_row,
         "row_order": collection.row_order,
+        "visible_after_generation": collection.visible_after_generation,
         "rules": [{"kind": rule.kind, "pattern": rule.pattern} for rule in collection.rules],
     } for collection in settings.collections])
-    pose_bone = obj.pose.bones[item.bone_name]
-    key = _carrier_key(source, item, index)
+    pose_bone = obj.pose.bones[source_bone_name]
+    key = _carrier_key(
+        source, target_kind, target_key, source_bone_name, target.rigify_type,
+    )
     if obj.get("re_rigify_key") != key:
-        pose_bone.rigify_type = item.rigify_type
-        apply_parameters(pose_bone.rigify_parameters, json.loads(item.parameters_json or "{}"))
+        pose_bone.rigify_type = target.rigify_type
+        apply_parameters(
+            pose_bone.rigify_parameters,
+            json.loads(target.parameters_json or "{}"),
+        )
         obj["re_rigify_key"] = key
-    global _bound_armature_name, _bound_armature_pointer, _bound_index
-    global _bound_bone_name, _pending_binding
+    global _bound_armature_name, _bound_armature_pointer
+    global _bound_kind, _bound_key, _bound_source_bone_name, _pending_binding
     _bound_armature_name = source.data.name
     _bound_armature_pointer = source.data.as_pointer()
-    _bound_index = index
-    _bound_bone_name = item.bone_name
+    _bound_kind = target_kind
+    _bound_key = str(target_key)
+    _bound_source_bone_name = source_bone_name
     _pending_binding = None
     return pose_bone
+
+
+def prepare_parameter_carrier(context, source, item, index):
+    return _prepare_parameter_carrier(
+        context, source, item, "BONE", index, item.bone_name,
+    )
+
+
+def prepare_rule_parameter_carrier(context, source, rule, rule_index):
+    try:
+        source_bone_name = _rule_source_bone(source, rule_index)
+    except (ConfigError, IndexError, StopIteration, json.JSONDecodeError):
+        return None
+    return _prepare_parameter_carrier(
+        context, source, rule, "RULE", rule.rule_id, source_bone_name,
+    )
 
 
 def request_parameter_carrier(source, item, index):
@@ -102,7 +167,9 @@ def request_parameter_carrier(source, item, index):
             source.as_pointer(),
             source.data.name,
             source.data.as_pointer(),
-            index,
+            "BONE",
+            str(index),
+            item.bone_name,
         )
     except ReferenceError:
         _pending_binding = None
@@ -111,10 +178,37 @@ def request_parameter_carrier(source, item, index):
         bpy.app.timers.register(_load_pending_parameter_carrier, first_interval=0.0)
 
 
+def request_rule_parameter_carrier(source, rule, rule_index):
+    global _pending_binding
+    try:
+        source_bone_name = _rule_source_bone(source, rule_index)
+        _pending_binding = (
+            source.name,
+            source.as_pointer(),
+            source.data.name,
+            source.data.as_pointer(),
+            "RULE",
+            rule.rule_id,
+            source_bone_name,
+        )
+    except (
+        ConfigError, IndexError, StopIteration, ReferenceError,
+        json.JSONDecodeError,
+    ):
+        _pending_binding = None
+        return False
+    if not bpy.app.timers.is_registered(_load_pending_parameter_carrier):
+        bpy.app.timers.register(_load_pending_parameter_carrier, first_interval=0.0)
+    return True
+
+
 def _load_pending_parameter_carrier():
     global _pending_binding
     if _pending_binding is not None:
-        object_name, object_pointer, armature_name, armature_pointer, index = _pending_binding
+        (
+            object_name, object_pointer, armature_name, armature_pointer,
+            target_kind, target_key, source_bone_name,
+        ) = _pending_binding
         _pending_binding = None
         try:
             source = bpy.data.objects.get(object_name)
@@ -125,10 +219,25 @@ def _load_pending_parameter_carrier():
                 or source.type != "ARMATURE" or source.data != armature
             ):
                 return None
-            if index < len(armature.re_rigify.bones):
-                item = armature.re_rigify.bones[index]
-                if item.bone_name in armature.bones:
-                    prepare_parameter_carrier(bpy.context, source, item, index)
+            settings = armature.re_rigify
+            target = None
+            if target_kind == "BONE":
+                index = int(target_key)
+                if 0 <= index < len(settings.bones):
+                    target = settings.bones[index]
+            elif target_kind == "RULE":
+                target = next(
+                    (
+                        rule for rule in settings.bone_rules
+                        if rule.rule_id == target_key
+                    ),
+                    None,
+                )
+            if target is not None and source_bone_name in armature.bones:
+                _prepare_parameter_carrier(
+                    bpy.context, source, target, target_kind,
+                    target_key, source_bone_name,
+                )
         except ReferenceError:
             remove_parameter_carrier()
     return None
@@ -141,12 +250,28 @@ def flush_parameter_carrier():
         armature = None
     if armature is None and _bound_armature_name is not None:
         remove_parameter_carrier()
-    elif armature is not None and _bound_index < len(armature.re_rigify.bones):
-        item = armature.re_rigify.bones[_bound_index]
+    elif armature is not None:
+        settings = armature.re_rigify
+        target = None
+        if _bound_kind == "BONE":
+            index = int(_bound_key)
+            if 0 <= index < len(settings.bones):
+                target = settings.bones[index]
+        elif _bound_kind == "RULE":
+            target = next(
+                (
+                    rule for rule in settings.bone_rules
+                    if rule.rule_id == _bound_key
+                ),
+                None,
+            )
         helper = bpy.data.objects.get(HELPER_NAME)
-        carrier = helper.pose.bones.get(_bound_bone_name) if helper and helper.pose else None
-        if carrier:
-            item.parameters_json = parameter_json(carrier)
+        carrier = (
+            helper.pose.bones.get(_bound_source_bone_name)
+            if helper and helper.pose else None
+        )
+        if target is not None and carrier is not None:
+            target.parameters_json = parameter_json(carrier)
 
 
 def _save_pre(_filepath):
@@ -155,8 +280,8 @@ def _save_pre(_filepath):
 
 
 def remove_parameter_carrier():
-    global _bound_armature_name, _bound_armature_pointer, _bound_index
-    global _bound_bone_name, _pending_binding
+    global _bound_armature_name, _bound_armature_pointer
+    global _bound_kind, _bound_key, _bound_source_bone_name, _pending_binding
     obj = bpy.data.objects.get(HELPER_NAME)
     if obj:
         data = obj.data
@@ -165,8 +290,9 @@ def remove_parameter_carrier():
             bpy.data.armatures.remove(data)
     _bound_armature_name = None
     _bound_armature_pointer = 0
-    _bound_index = -1
-    _bound_bone_name = None
+    _bound_kind = None
+    _bound_key = None
+    _bound_source_bone_name = None
     _pending_binding = None
 
 
@@ -174,6 +300,17 @@ class RERIGIFY_UL_Bones(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
         layout.prop(item, "collection_selected", text="")
         layout.label(text=item.bone_name, icon="BONE_DATA", translate=False)
+        layout.label(text=item.rigify_type or "No type", translate=False)
+
+
+class RERIGIFY_UL_BoneRules(bpy.types.UIList):
+    def draw_item(
+        self, _context, layout, _data, item, _icon,
+        _active_data, _active_propname, _index,
+    ):
+        layout.label(
+            text=item.pattern or "Empty", icon="FILTER", translate=False,
+        )
         layout.label(text=item.rigify_type or "No type", translate=False)
 
 
@@ -204,11 +341,16 @@ def _active_parameter_refs(context, prop_name):
     obj = context.object
     if obj is None or obj.type != "ARMATURE":
         return None
-    settings = obj.data.re_rigify
-    if not settings.bones or settings.active_bone_index >= len(settings.bones):
+    if (
+        obj.data.name != _bound_armature_name
+        or obj.data.as_pointer() != _bound_armature_pointer
+    ):
         return None
-    item = settings.bones[settings.active_bone_index]
-    carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
+    helper = bpy.data.objects.get(HELPER_NAME)
+    carrier = (
+        helper.pose.bones.get(_bound_source_bone_name)
+        if helper and helper.pose else None
+    )
     if carrier is None:
         return None
     from rigify.utils.layers import is_collection_ref_list_prop
@@ -286,6 +428,84 @@ class RERIGIFY_PT_Main(_RERIGIFY_PT_Base, bpy.types.Panel):
             row.operator("re_rigify.remove_drive", text="", icon="X")
 
 
+class RERIGIFY_PT_BoneRules(_RERIGIFY_PT_Base, bpy.types.Panel):
+    bl_label = "Bone Matching Rules"
+    bl_idname = "RERIGIFY_PT_bone_rules"
+    bl_parent_id = "RERIGIFY_PT_main"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        settings = context.object.data.re_rigify
+        row = layout.row()
+        row.template_list(
+            "RERIGIFY_UL_BoneRules", "",
+            settings, "bone_rules",
+            settings, "active_bone_rule_index",
+            rows=4,
+        )
+        buttons = row.column(align=True)
+        buttons.operator("re_rigify.bone_rule_add", text="", icon="ADD")
+        buttons.operator("re_rigify.bone_rule_remove", text="", icon="REMOVE")
+        up = buttons.operator(
+            "re_rigify.bone_rule_move", text="", icon="TRIA_UP",
+        )
+        up.direction = -1
+        down = buttons.operator(
+            "re_rigify.bone_rule_move", text="", icon="TRIA_DOWN",
+        )
+        down.direction = 1
+        if settings.bone_rules:
+            rule = settings.bone_rules[settings.active_bone_rule_index]
+            layout.prop(rule, "kind")
+            layout.prop(rule, "pattern")
+            refresh_rigify_types(context)
+            layout.prop_search(
+                rule, "rigify_type",
+                context.window_manager, "rigify_types",
+                text="Rig Type",
+            )
+        layout.operator("re_rigify.bone_rule_sync", icon="FILE_REFRESH")
+
+
+class RERIGIFY_PT_BoneRuleParameters(
+    _RERIGIFY_PT_Base, bpy.types.Panel,
+):
+    bl_label = "Rule Parameters"
+    bl_idname = "RERIGIFY_PT_bone_rule_parameters"
+    bl_parent_id = "RERIGIFY_PT_bone_rules"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+        obj = context.object
+        settings = obj.data.re_rigify
+        if not settings.bone_rules:
+            layout.label(text="No bone rule", icon="INFO")
+            return
+        index = settings.active_bone_rule_index
+        rule = settings.bone_rules[index]
+        carrier = get_rule_parameter_carrier(obj, rule, index)
+        if carrier is None:
+            if not request_rule_parameter_carrier(obj, rule, index):
+                layout.label(text="Rule matches no bones", icon="ERROR")
+            else:
+                layout.label(
+                    text="Loading Rigify parameters…", icon="TIME",
+                )
+            return
+        try:
+            parameter_layout = RigifyParameterLayout(layout.column())
+            draw_parameters(parameter_layout, carrier)
+            layout.label(
+                text="Parameters save automatically", icon="CHECKMARK",
+            )
+        except Exception as exc:
+            layout.label(
+                text=f"Parameter UI unavailable: {exc}", icon="ERROR",
+            )
+
+
 class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
     bl_label = "Bone Setup"
     bl_idname = "RERIGIFY_PT_bones"
@@ -312,14 +532,21 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
         op.selected = False
         if settings.bones:
             item = settings.bones[settings.active_bone_index]
+            managed = bool(item.managed_rule_id)
             layout.use_property_split = True
             layout.use_property_decorate = False
-            layout.prop_search(item, "bone_name", obj.data, "bones", text="Bone")
+            fields = layout.column()
+            fields.enabled = not managed
+            fields.prop_search(
+                item, "bone_name", obj.data, "bones", text="Bone",
+            )
             refresh_rigify_types(context)
-            layout.prop_search(
+            fields.prop_search(
                 item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type"
             )
-            if item.rigify_type in EXPLICIT_CHAIN_MIN_LENGTHS:
+            if managed:
+                layout.label(text="Managed by a bone rule", icon="LOCKED")
+            if not managed and item.rigify_type in EXPLICIT_CHAIN_MIN_LENGTHS:
                 chain = layout.box()
                 chain.label(text="Explicit Chain")
                 row = chain.row()
@@ -339,9 +566,14 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
                 op = down.operator("re_rigify.chain_move", text="", icon="TRIA_DOWN")
                 op.direction = 1
             actions = layout.row(align=True)
+            actions.enabled = not managed
             actions.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
             actions.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
-            if item.rigify_type in {"limbs.arm", "limbs.super_finger", "face.skin_eye"}:
+            if (
+                not managed
+                and item.rigify_type
+                in {"limbs.arm", "limbs.super_finger", "face.skin_eye"}
+            ):
                 compatibility = layout.box()
                 compatibility.label(text="Compatibility")
                 compatibility.use_property_split = True
@@ -380,6 +612,9 @@ class RERIGIFY_PT_BoneParameters(_RERIGIFY_PT_Base, bpy.types.Panel):
             layout.label(text="No configured bone", icon="INFO")
             return
         item = settings.bones[settings.active_bone_index]
+        if item.managed_rule_id:
+            layout.label(text="Managed by a bone rule", icon="LOCKED")
+            return
         carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
         if carrier is not None:
             try:
@@ -617,12 +852,13 @@ class RERIGIFY_PT_Configuration(_RERIGIFY_PT_Base, bpy.types.Panel):
 
 
 CLASSES = (
-    RERIGIFY_UL_Bones, RERIGIFY_UL_ChainBones,
+    RERIGIFY_UL_Bones, RERIGIFY_UL_BoneRules, RERIGIFY_UL_ChainBones,
     RERIGIFY_UL_Collections, RERIGIFY_UL_Rules,
     RERIGIFY_UL_ColorSets,
     RERIGIFY_OT_parameter_collection_ref_add,
     RERIGIFY_OT_parameter_collection_ref_remove,
     RERIGIFY_PT_Main,
+    RERIGIFY_PT_BoneRules, RERIGIFY_PT_BoneRuleParameters,
     RERIGIFY_PT_Bones, RERIGIFY_PT_BoneParameters,
     RERIGIFY_PT_Collections, RERIGIFY_PT_CollectionRules,
     RERIGIFY_PT_Layout, RERIGIFY_PT_Colors, RERIGIFY_PT_Configuration,

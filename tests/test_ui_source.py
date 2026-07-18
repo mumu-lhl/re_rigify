@@ -31,6 +31,30 @@ class PanelStructureTests(unittest.TestCase):
         self.assertIn("RERIGIFY_PG_BoneRule", classes)
         self.assertTrue(Path("re_rigify/rules.py").exists())
 
+    def test_bone_rule_panels_and_operators_are_registered(self):
+        ui_source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        ui_tree = ast.parse(ui_source)
+        ui_classes = {
+            node.name for node in ui_tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertTrue({
+            "RERIGIFY_UL_BoneRules",
+            "RERIGIFY_PT_BoneRules",
+            "RERIGIFY_PT_BoneRuleParameters",
+        }.issubset(ui_classes))
+
+        operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
+        operator_tree = ast.parse(operator_source)
+        operator_classes = {
+            node.name for node in operator_tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertTrue({
+            "RERIGIFY_OT_BoneRuleAdd",
+            "RERIGIFY_OT_BoneRuleRemove",
+            "RERIGIFY_OT_BoneRuleMove",
+            "RERIGIFY_OT_BoneRuleSync",
+        }.issubset(operator_classes))
+
     def test_bone_move_operator_and_buttons_are_registered(self):
         operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
         operator_tree = ast.parse(operator_source)

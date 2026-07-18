@@ -29,7 +29,9 @@ from re_rigify.ui import (
     _save_pre,
     flush_parameter_carrier,
     get_parameter_carrier,
+    get_rule_parameter_carrier,
     prepare_parameter_carrier,
+    prepare_rule_parameter_carrier,
     refresh_rigify_types,
     request_parameter_carrier,
 )
@@ -151,6 +153,14 @@ try:
         "Finger_Index", "Finger_Middle",
     ]
     assert all(item.managed_rule_id == "fingers" for item in rule_settings.bones)
+    carrier = prepare_rule_parameter_carrier(
+        bpy.context, rule_source, rule, 0,
+    )
+    assert carrier is not None
+    carrier.rigify_parameters.make_control = False
+    flush_parameter_carrier()
+    assert json.loads(rule.parameters_json)["make_control"] is False
+    assert get_rule_parameter_carrier(rule_source, rule, 0) == carrier
     rule_settings.bones[0].collection_selected = True
     rule_settings.active_bone_index = 0
     rule.pattern = "Finger_Index"

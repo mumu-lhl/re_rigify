@@ -232,6 +232,113 @@ class RERIGIFY_OT_BoneMove(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class RERIGIFY_OT_BoneRuleAdd(bpy.types.Operator):
+    bl_idname = "re_rigify.bone_rule_add"
+    bl_label = "Add Bone Matching Rule"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        import uuid
+        from .ui import flush_parameter_carrier, remove_parameter_carrier
+
+        obj = active_armature(context)
+        if obj is None:
+            return {"CANCELLED"}
+        flush_parameter_carrier()
+        remove_parameter_carrier()
+        settings = obj.data.re_rigify
+        rule = settings.bone_rules.add()
+        rule.rule_id = uuid.uuid4().hex
+        rule.kind = "GLOB"
+        rule.pattern = "*"
+        types = available_rig_types()
+        rule.rigify_type = (
+            "basic.raw_copy" if "basic.raw_copy" in types
+            else (types[0] if types else "")
+        )
+        settings.active_bone_rule_index = len(settings.bone_rules) - 1
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_BoneRuleRemove(bpy.types.Operator):
+    bl_idname = "re_rigify.bone_rule_remove"
+    bl_label = "Remove Bone Matching Rule"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        from .rules import sync_bone_rules
+        from .ui import flush_parameter_carrier, remove_parameter_carrier
+
+        obj = active_armature(context)
+        if obj is None:
+            return {"CANCELLED"}
+        settings = obj.data.re_rigify
+        if not settings.bone_rules:
+            return {"CANCELLED"}
+        flush_parameter_carrier()
+        remove_parameter_carrier()
+        settings.bone_rules.remove(settings.active_bone_rule_index)
+        settings.active_bone_rule_index = min(
+            settings.active_bone_rule_index,
+            max(0, len(settings.bone_rules) - 1),
+        )
+        sync_bone_rules(obj.data)
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_BoneRuleMove(bpy.types.Operator):
+    bl_idname = "re_rigify.bone_rule_move"
+    bl_label = "Move Bone Matching Rule"
+    bl_options = {"UNDO"}
+
+    direction: IntProperty()
+
+    def execute(self, context):
+        from .ui import flush_parameter_carrier, remove_parameter_carrier
+
+        obj = active_armature(context)
+        if obj is None:
+            return {"CANCELLED"}
+        settings = obj.data.re_rigify
+        source = settings.active_bone_rule_index
+        target = source + self.direction
+        if not 0 <= source < len(settings.bone_rules):
+            return {"CANCELLED"}
+        if not 0 <= target < len(settings.bone_rules):
+            return {"CANCELLED"}
+        flush_parameter_carrier()
+        remove_parameter_carrier()
+        settings.bone_rules.move(source, target)
+        settings.active_bone_rule_index = target
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_BoneRuleSync(bpy.types.Operator):
+    bl_idname = "re_rigify.bone_rule_sync"
+    bl_label = "Sync Bone Matching Rules"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        from .rules import sync_bone_rules
+        from .ui import flush_parameter_carrier, remove_parameter_carrier
+
+        obj = active_armature(context)
+        if obj is None:
+            return {"CANCELLED"}
+        flush_parameter_carrier()
+        remove_parameter_carrier()
+        try:
+            added, updated, removed = sync_bone_rules(obj.data)
+        except (ConfigError, json.JSONDecodeError) as exc:
+            self.report({"WARNING"}, str(exc))
+            return {"CANCELLED"}
+        self.report(
+            {"INFO"},
+            f"Rules added {added}, updated {updated}, removed {removed} bones",
+        )
+        return {"FINISHED"}
+
+
 class RERIGIFY_OT_ChainAddSelected(bpy.types.Operator):
     bl_idname = "re_rigify.chain_add_selected"
     bl_label = "Add Selected Bones to Explicit Chain"
@@ -906,6 +1013,8 @@ class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
 
 CLASSES = (
     RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove, RERIGIFY_OT_BoneMove,
+    RERIGIFY_OT_BoneRuleAdd, RERIGIFY_OT_BoneRuleRemove,
+    RERIGIFY_OT_BoneRuleMove, RERIGIFY_OT_BoneRuleSync,
     RERIGIFY_OT_ChainAddSelected, RERIGIFY_OT_ChainRemove, RERIGIFY_OT_ChainMove,
     RERIGIFY_OT_MirrorBoneConfig, RERIGIFY_OT_CopyParametersToSelected,
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,
