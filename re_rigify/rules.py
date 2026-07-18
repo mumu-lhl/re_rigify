@@ -9,6 +9,7 @@ from .blender_config import (
 )
 from .core import (
     ConfigError,
+    preview_bone_rule,
     resolve_bone_rules,
 )
 
@@ -45,6 +46,25 @@ def armature_rule_topology(armature) -> tuple[
         )
     }
     return parents, aligned_edges
+
+
+def active_bone_rule_preview(armature) -> dict:
+    settings = armature.re_rigify
+    if not settings.bone_rules:
+        return {"bone_names": [], "chain_count": 0, "rows": []}
+    index = min(
+        settings.active_bone_rule_index,
+        len(settings.bone_rules) - 1,
+    )
+    rules = rule_dicts(settings)
+    parents, aligned_edges = armature_rule_topology(armature)
+    return preview_bone_rule(
+        armature.bones.keys(),
+        rules,
+        rules[index]["rule_id"],
+        parents,
+        aligned_edges,
+    )
 
 
 def cleanup_bone_rule_rows(armature) -> int:

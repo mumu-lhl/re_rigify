@@ -22,6 +22,35 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_rule_preview_ui_is_registered(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        classes = {
+            node.name for node in tree.body
+            if isinstance(node, ast.ClassDef)
+        }
+        self.assertIn("RERIGIFY_UL_BoneRulePreview", classes)
+        self.assertIn('"RERIGIFY_UL_BoneRulePreview"', source)
+        self.assertIn("active_bone_rule_preview_index", source)
+
+    def test_bone_list_filters_rule_managed_rows(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        bone_list = next(
+            node for node in tree.body
+            if (
+                isinstance(node, ast.ClassDef)
+                and node.name == "RERIGIFY_UL_Bones"
+            )
+        )
+        methods = {
+            node.name: node
+            for node in bone_list.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        self.assertIn("filter_items", methods)
+        self.assertIn("managed_rule_id", ast.unparse(methods["filter_items"]))
+
     def test_rule_sync_only_cleans_persistent_bone_rows(self):
         source = Path("re_rigify/rules.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

@@ -9,7 +9,8 @@ import bpy
 from .core import (
     ConfigError,
     EXPLICIT_CHAIN_MIN_LENGTHS,
-    resolve_bone_rule_rows,
+    preview_bone_rule,
+    resolve_bone_rules,
 )
 from .rigify_adapter import (
     RigifyParameterLayout,
@@ -69,13 +70,14 @@ def _rule_source_bone(source, rule_index):
 
     rules = rule_dicts(source.data.re_rigify)
     parents, aligned_edges = armature_rule_topology(source.data)
-    rows = resolve_bone_rule_rows(
+    preview = preview_bone_rule(
         source.data.bones.keys(),
-        [rules[rule_index]],
+        rules,
+        rules[rule_index]["rule_id"],
         parents,
         aligned_edges,
     )
-    return rows[0]["bone_name"]
+    return preview["bone_names"][0]
 
 
 def get_rule_parameter_carrier(source, rule, rule_index):
@@ -311,6 +313,29 @@ class RERIGIFY_UL_Bones(bpy.types.UIList):
         layout.label(text=item.bone_name, icon="BONE_DATA", translate=False)
         layout.label(text=item.rigify_type or "No type", translate=False)
 
+    def filter_items(self, _context, data, property_name):
+        from .rules import rule_dicts
+
+        items = getattr(data, property_name)
+        claimed = set()
+        if data.bone_rules:
+            try:
+                claimed = set(resolve_bone_rules(
+                    data.id_data.bones.keys(),
+                    rule_dicts(data),
+                ))
+            except (ConfigError, ValueError, json.JSONDecodeError):
+                pass
+        flags = [
+            (
+                0
+                if item.managed_rule_id or item.bone_name in claimed
+                else self.bitflag_filter_item
+            )
+            for item in items
+        ]
+        return flags, []
+
 
 class RERIGIFY_UL_BoneRules(bpy.types.UIList):
     def draw_item(
@@ -321,6 +346,44 @@ class RERIGIFY_UL_BoneRules(bpy.types.UIList):
             text=item.pattern or "Empty", icon="FILTER", translate=False,
         )
         layout.label(text=item.rigify_type or "No type", translate=False)
+
+
+class RERIGIFY_UL_BoneRulePreview(bpy.types.UIList):
+    def draw_item(
+        self, _context, layout, _data, item, _icon,
+        _active_data, _active_propname, _index,
+    ):
+        layout.label(
+            text=item.name, icon="BONE_DATA", translate=False,
+        )
+
+    def filter_items(self, _context, data, property_name):
+        from .rules import active_bone_rule_preview
+
+        items = getattr(data, property_name)
+        try:
+            preview = active_bone_rule_preview(data)
+        except (ConfigError, ValueError, json.JSONDecodeError):
+            return [0] * len(items), []
+        rank = {
+            name: index
+            for index, name in enumerate(preview["bone_names"])
+        }
+        flags = [
+            self.bitflag_filter_item if item.name in rank else 0
+            for item in items
+        ]
+        desired = sorted(
+            range(len(items)),
+            key=lambda index: (
+                items[index].name not in rank,
+                rank.get(items[index].name, index),
+            ),
+        )
+        new_order = [0] * len(items)
+        for new_index, old_index in enumerate(desired):
+            new_order[old_index] = new_index
+        return flags, new_order
 
 
 class RERIGIFY_UL_ChainBones(bpy.types.UIList):
@@ -444,6 +507,8 @@ class RERIGIFY_PT_BoneRules(_RERIGIFY_PT_Base, bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
+        from .rules import active_bone_rule_preview
+
         layout = self.layout
         settings = context.object.data.re_rigify
         row = layout.row()
@@ -480,7 +545,40 @@ class RERIGIFY_PT_BoneRules(_RERIGIFY_PT_Base, bpy.types.Panel):
                 context.window_manager, "rigify_types",
                 text="Rig Type",
             )
-        layout.operator("re_rigify.bone_rule_sync", icon="FILE_REFRESH")
+            preview_box = layout.box()
+            preview_box.label(text="Effective Matches", icon="VIEWZOOM")
+            try:
+                preview = active_bone_rule_preview(context.object.data)
+            except (
+                ConfigError,
+                ValueError,
+                json.JSONDecodeError,
+            ) as exc:
+                preview_box.label(
+                    text=str(exc), icon="ERROR", translate=False,
+                )
+            else:
+                if rule.apply_as_chain:
+                    preview_box.label(
+                        text=(
+                            f"{len(preview['bone_names'])} bones / "
+                            f"{preview['chain_count']} chains"
+                        ),
+                        icon="LINKED",
+                        translate=False,
+                    )
+                else:
+                    preview_box.label(
+                        text=f"{len(preview['bone_names'])} bones",
+                        icon="BONE_DATA",
+                        translate=False,
+                    )
+                preview_box.template_list(
+                    "RERIGIFY_UL_BoneRulePreview", "",
+                    context.object.data, "bones",
+                    settings, "active_bone_rule_preview_index",
+                    rows=5,
+                )
 
 
 class RERIGIFY_PT_BoneRuleParameters(
@@ -868,7 +966,8 @@ class RERIGIFY_PT_Configuration(_RERIGIFY_PT_Base, bpy.types.Panel):
 
 
 CLASSES = (
-    RERIGIFY_UL_Bones, RERIGIFY_UL_BoneRules, RERIGIFY_UL_ChainBones,
+    RERIGIFY_UL_Bones, RERIGIFY_UL_BoneRules,
+    RERIGIFY_UL_BoneRulePreview, RERIGIFY_UL_ChainBones,
     RERIGIFY_UL_Collections, RERIGIFY_UL_Rules,
     RERIGIFY_UL_ColorSets,
     RERIGIFY_OT_parameter_collection_ref_add,

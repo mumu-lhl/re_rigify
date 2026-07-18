@@ -210,6 +210,7 @@ class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
     active_bone_index: IntProperty(default=0, update=_refresh_active_bone)
     bone_rules: CollectionProperty(type=RERIGIFY_PG_BoneRule)
     active_bone_rule_index: IntProperty(default=0)
+    active_bone_rule_preview_index: IntProperty(default=0)
     collections: CollectionProperty(type=RERIGIFY_PG_CollectionConfig)
     active_collection_index: IntProperty(default=0)
     color_sets: CollectionProperty(type=RERIGIFY_PG_ColorSet)

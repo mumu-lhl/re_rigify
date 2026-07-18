@@ -21,7 +21,7 @@ The mirror command processes every checked configuration at once; if none are ch
 
 The bone list arrows move all checked configurations by one position while preserving their relative order. With no checked rows, they move only the active configuration. Preset export preserves the displayed order.
 
-**Bone Matching Rules** apply one Rigify type and one native parameter set to every exact or case-sensitive Glob match. Rules run from top to bottom, and the last matching rule wins. **Sync Bone Matching Rules** updates the bone list manually; validation, import, export, and generation synchronize automatically. Materialized rows are locked for type, parameters, chain, and compatibility, but remain selectable, reorderable, and usable in collection membership. Export stores the canonical rules and manual rows rather than duplicating rule-managed rows.
+**Bone Matching Rules** apply one Rigify type and one native parameter set to every exact or case-sensitive Glob match. Rules run from top to bottom, and the last matching rule wins. Rule matches stay out of the manual bone list. The active rule preview shows only final matches after later-rule precedence. Validation and generation materialize those matches temporarily, while export stores only canonical rules and manual rows.
 
 Enable **Apply as Chain and Force Connect** when one rule matches every member of several linear chains. Re-Rigify groups final winning matches by source parenting, assigns the Rigify type only to each chain root, and connects coincident child joints only on the temporary Metarig. The source armature remains unchanged. Branches, gaps, short chains, and unsupported Rigify types are rejected during validation.
 
