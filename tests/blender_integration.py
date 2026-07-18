@@ -143,6 +143,58 @@ try:
     bpy.data.objects.remove(reference_source, do_unlink=True)
     bpy.data.armatures.remove(reference_data)
 
+    chain_source = make_armature(
+        "Chain Rule Source",
+        ["Head", "HairA_00", "HairA_01", "HairB_00", "HairB_01", "HairB_02"],
+    )
+    bpy.ops.object.mode_set(mode="EDIT")
+    edit_bones = chain_source.data.edit_bones
+    for root_name, x in (("HairA_00", 1.0), ("HairB_00", 2.0)):
+        root = edit_bones[root_name]
+        root.head = (x, 0, 0)
+        root.tail = (x, 1, 0)
+        root.parent = edit_bones["Head"]
+    for child_name, parent_name, y in (
+        ("HairA_01", "HairA_00", 1.0),
+        ("HairB_01", "HairB_00", 1.0),
+        ("HairB_02", "HairB_01", 2.0),
+    ):
+        child = edit_bones[child_name]
+        child.head = (edit_bones[parent_name].tail)
+        child.tail = (child.head.x, y + 1.0, child.head.z)
+        child.parent = edit_bones[parent_name]
+        child.use_connect = False
+    bpy.ops.object.mode_set(mode="OBJECT")
+    chain_settings = chain_source.data.re_rigify
+    chain_rule = chain_settings.bone_rules.add()
+    chain_rule.rule_id = "hair"
+    chain_rule.kind = "GLOB"
+    chain_rule.pattern = "Hair*"
+    chain_rule.rigify_type = "limbs.spline_tentacle"
+    chain_rule.apply_as_chain = True
+    assert sync_bone_rules(chain_source.data) == (2, 0, 0)
+    assert [item.bone_name for item in chain_settings.bones] == [
+        "HairA_00", "HairB_00",
+    ]
+    assert [
+        [entry.bone_name for entry in item.chain_bones]
+        for item in chain_settings.bones
+    ] == [
+        ["HairA_00", "HairA_01"],
+        ["HairB_00", "HairB_01", "HairB_02"],
+    ]
+    assert not any(
+        chain_source.data.bones[name].use_connect
+        for name in ("HairA_01", "HairB_01", "HairB_02")
+    )
+    chain_canonical = armature_to_payload(
+        chain_source.data, include_managed=False,
+    )
+    assert chain_canonical["bone_rules"][0]["apply_as_chain"] is True
+    chain_data = chain_source.data
+    bpy.data.objects.remove(chain_source, do_unlink=True)
+    bpy.data.armatures.remove(chain_data)
+
     rule_source = make_armature(
         "Rule Source", ["Root", "Finger_Index", "Finger_Middle"],
     )

@@ -81,6 +81,8 @@ def _normalize_collection_orders(settings):
 
 
 def validate_active(context):
+    from .rules import armature_rule_topology
+
     obj = active_armature(context)
     if not obj:
         return None, ("Select an armature object",)
@@ -90,7 +92,14 @@ def validate_active(context):
         payload = synchronized_payload(obj, include_managed=True)
     except (ConfigError, ValueError, json.JSONDecodeError) as exc:
         return obj, (f"Invalid stored parameter JSON: {exc}",)
-    result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
+    parents, aligned_edges = armature_rule_topology(obj.data)
+    result = validate_config(
+        payload,
+        obj.data.bones.keys(),
+        available_rig_types(),
+        parents,
+        aligned_edges,
+    )
     errors = list(result.errors)
     if not errors:
         errors.extend(validate_compatibility(obj, payload["bones"]))
@@ -969,19 +978,30 @@ class RERIGIFY_OT_Import(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         obj = active_armature(context)
+        from .rules import armature_rule_topology
         from .ui import flush_parameter_carrier, remove_parameter_carrier
         flush_parameter_carrier()
         remove_parameter_carrier()
         try:
             payload = json.loads(Path(self.filepath).read_text(encoding="utf-8"))
             payload = normalize_config(payload)
+            parents, aligned_edges = armature_rule_topology(obj.data)
             resolved = materialize_bone_rules(
-                payload, obj.data.bones.keys(),
+                payload,
+                obj.data.bones.keys(),
+                parents,
+                aligned_edges,
             )
         except (OSError, json.JSONDecodeError, ConfigError) as exc:
             self.report({"ERROR"}, str(exc))
             return {"CANCELLED"}
-        result = validate_config(payload, obj.data.bones.keys(), available_rig_types())
+        result = validate_config(
+            payload,
+            obj.data.bones.keys(),
+            available_rig_types(),
+            parents,
+            aligned_edges,
+        )
         errors = list(result.errors)
         if not errors:
             errors.extend(validate_compatibility(obj, resolved["bones"]))

@@ -29,6 +29,7 @@ class PanelStructureTests(unittest.TestCase):
             node.name for node in tree.body if isinstance(node, ast.ClassDef)
         }
         self.assertIn("RERIGIFY_PG_BoneRule", classes)
+        self.assertIn("apply_as_chain", source)
         self.assertTrue(Path("re_rigify/rules.py").exists())
 
     def test_bone_rule_panels_and_operators_are_registered(self):

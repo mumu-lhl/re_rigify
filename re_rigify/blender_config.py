@@ -176,6 +176,10 @@ class RERIGIFY_PG_BoneRule(bpy.types.PropertyGroup):
     )
     pattern: StringProperty(name="Bone Pattern")
     rigify_type: StringProperty(name="Rigify Type")
+    apply_as_chain: BoolProperty(
+        name="Apply as Chain and Force Connect",
+        default=False,
+    )
     parameters_json: StringProperty(name="Parameters", default="{}")
 
 
@@ -272,6 +276,7 @@ def armature_to_payload(
             "kind": rule.kind,
             "pattern": rule.pattern,
             "rigify_type": rule.rigify_type,
+            "apply_as_chain": rule.apply_as_chain,
             "parameters": json.loads(rule.parameters_json or "{}"),
         } for rule in settings.bone_rules],
         "collections": [{
@@ -320,6 +325,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
             rule.kind = source["kind"]
             rule.pattern = source["pattern"]
             rule.rigify_type = source["rigify_type"]
+            rule.apply_as_chain = source["apply_as_chain"]
             rule.parameters_json = json.dumps(
                 source["parameters"], ensure_ascii=False, sort_keys=True,
             )
