@@ -178,3 +178,35 @@ class StaticSourceCoverageTests(unittest.TestCase):
             if (translations.DEFAULT_CONTEXT, source) not in catalog
         )
         self.assertEqual(missing, [])
+
+
+class PackageLifecycleTests(unittest.TestCase):
+    def test_translation_lifecycle_wraps_class_registration(self):
+        source = Path("re_rigify/__init__.py").read_text()
+        tree = ast.parse(source)
+        functions = {
+            node.name: node
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+        }
+
+        def called_modules(function):
+            return [
+                node.value.func.value.id
+                for node in function.body
+                if (
+                    isinstance(node, ast.Expr)
+                    and isinstance(node.value, ast.Call)
+                    and isinstance(node.value.func, ast.Attribute)
+                    and isinstance(node.value.func.value, ast.Name)
+                )
+            ]
+
+        self.assertEqual(
+            called_modules(functions["register"]),
+            ["translations", "blender_config", "drive", "operators", "ui"],
+        )
+        self.assertEqual(
+            called_modules(functions["unregister"]),
+            ["ui", "operators", "drive", "blender_config", "translations"],
+        )

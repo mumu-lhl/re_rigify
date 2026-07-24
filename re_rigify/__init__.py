@@ -11,7 +11,8 @@ bl_info = {
 }
 
 def register():
-    from . import blender_config, drive, operators, ui
+    from . import blender_config, drive, operators, translations, ui
+    translations.register()
     blender_config.register()
     drive.register()
     operators.register()
@@ -19,8 +20,9 @@ def register():
 
 
 def unregister():
-    from . import blender_config, drive, operators, ui
+    from . import blender_config, drive, operators, translations, ui
     ui.unregister()
     operators.unregister()
     drive.unregister()
     blender_config.unregister()
+    translations.unregister()
