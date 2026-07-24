@@ -8,6 +8,8 @@ from fnmatch import fnmatchcase
 import re
 from typing import Any, Iterable
 
+from .translations import format_iface, iface_
+
 
 FORMAT_NAME = "re-rigify"
 SCHEMA_VERSION = 1
@@ -155,7 +157,12 @@ def normalize_compatibility(value: object, path: str = "compatibility") -> dict[
     if "eye_forward_axis" in value:
         axis = _require_type(value["eye_forward_axis"], str, f"{path}.eye_forward_axis")
         if axis not in {"AUTO", "+X", "-X", "+Y", "-Y"}:
-            raise ConfigError(f"{path}.eye_forward_axis is invalid")
+            raise ConfigError(
+                format_iface(
+                    "{path}.eye_forward_axis is invalid",
+                    path=path,
+                )
+            )
         result["eye_forward_axis"] = axis
     return result
 
@@ -175,7 +182,12 @@ def mirror_compatibility(value: dict[str, Any], name_mapper) -> dict[str, Any]:
 
 def unique_child_chain(root: str, parents: dict[str, str | None]) -> list[str]:
     if root not in parents:
-        raise ConfigError(f"bone does not exist: {root!r}")
+        raise ConfigError(
+            format_iface(
+                "bone does not exist: {bone_name!r}",
+                bone_name=root,
+            )
+        )
     children: dict[str, list[str]] = {name: [] for name in parents}
     for child, parent in parents.items():
         if parent:
@@ -187,7 +199,11 @@ def unique_child_chain(root: str, parents: dict[str, str | None]) -> list[str]:
             return chain
         if len(candidates) > 1:
             raise ConfigError(
-                f"{chain[-1]!r} has ambiguous child chain: {', '.join(candidates)}"
+                format_iface(
+                    "{bone_name!r} has ambiguous child chain: {children}",
+                    bone_name=chain[-1],
+                    children=", ".join(candidates),
+                )
             )
         chain.append(candidates[0])
 
@@ -229,7 +245,11 @@ def resolve_bone_rules(
             ]
         if not matches:
             raise ConfigError(
-                f"{rule['kind']} bone rule {rule['pattern']!r} matched no bones"
+                format_iface(
+                    "{kind} bone rule {pattern!r} matched no bones",
+                    kind=rule["kind"],
+                    pattern=rule["pattern"],
+                )
             )
         for name in matches:
             winners[name] = rule
@@ -252,7 +272,9 @@ def resolve_bone_rule_rows(
             "chain_bones": [],
         } for name in names if name in winners]
     if parents is None or aligned_edges is None:
-        raise ConfigError("chain bone rules require source bone topology")
+        raise ConfigError(
+            iface_("chain bone rules require source bone topology")
+        )
 
     children: dict[str, list[str]] = {name: [] for name in names}
     for child in names:
@@ -284,8 +306,12 @@ def resolve_bone_rule_rows(
         minimum = CHAIN_RULE_MIN_LENGTHS.get(rule["rigify_type"])
         if minimum is None:
             raise ConfigError(
-                f"bone rule {rule['pattern']!r} Rigify type "
-                f"{rule['rigify_type']!r} does not support chain rules"
+                format_iface(
+                    "bone rule {pattern!r} Rigify type {rigify_type!r} "
+                    "does not support chain rules",
+                    pattern=rule["pattern"],
+                    rigify_type=rule["rigify_type"],
+                )
             )
         parent = parents.get(name)
         if parent is not None and same_winner(parent, name):
@@ -299,23 +325,36 @@ def resolve_bone_rule_rows(
             ]
             if len(matched_children) > 1:
                 raise ConfigError(
-                    f"bone rule {rule['pattern']!r} chain branches "
-                    f"at {current!r}"
+                    format_iface(
+                        "bone rule {pattern!r} chain branches at {bone_name!r}",
+                        pattern=rule["pattern"],
+                        bone_name=current,
+                    )
                 )
             if not matched_children:
                 break
             child = matched_children[0]
             if (current, child) not in aligned_edges:
                 raise ConfigError(
-                    f"bone rule {rule['pattern']!r} has disjoint edge "
-                    f"{current!r} -> {child!r}"
+                    format_iface(
+                        "bone rule {pattern!r} has disjoint edge "
+                        "{parent!r} -> {child!r}",
+                        pattern=rule["pattern"],
+                        parent=current,
+                        child=child,
+                    )
                 )
             chain.append(child)
             current = child
         if len(chain) < minimum:
             raise ConfigError(
-                f"bone rule {rule['pattern']!r} chain at {name!r} "
-                f"requires at least {minimum} bones"
+                format_iface(
+                    "bone rule {pattern!r} chain at {bone_name!r} "
+                    "requires at least {minimum} bones",
+                    pattern=rule["pattern"],
+                    bone_name=name,
+                    minimum=minimum,
+                )
             )
         claimed.update(chain)
         rows.append({
@@ -331,8 +370,10 @@ def resolve_bone_rule_rows(
     unreachable = expected - claimed
     if unreachable:
         raise ConfigError(
-            "chain bone rule topology has no reachable root for "
-            f"{sorted(unreachable)!r}"
+            format_iface(
+                "chain bone rule topology has no reachable root for {bones!r}",
+                bones=sorted(unreachable),
+            )
         )
     return rows
 
@@ -448,7 +489,12 @@ def infer_rigify_topology(
             hand = find(lower, ("wrist", "hand")) if lower else None
             if not lower or not hand:
                 raise ConfigError(
-                    f"{root!r} ({rig_type}) requires an upper-arm, forearm/elbow, and hand/wrist chain"
+                    format_iface(
+                        "{root!r} ({rigify_type}) requires an upper-arm, "
+                        "forearm/elbow, and hand/wrist chain",
+                        root=root,
+                        rigify_type=rig_type,
+                    )
                 )
             operations.extend(((root, lower, True), (lower, hand, True)))
         elif rig_type == "limbs.leg":
@@ -465,7 +511,12 @@ def infer_rigify_topology(
                 )
             if not knee or not foot or not toe or not heel:
                 raise ConfigError(
-                    f"{root!r} ({rig_type}) requires thigh, knee/shin, foot, toe, and heel bones"
+                    format_iface(
+                        "{root!r} ({rigify_type}) requires thigh, knee/shin, "
+                        "foot, toe, and heel bones",
+                        root=root,
+                        rigify_type=rig_type,
+                    )
                 )
             operations.extend(
                 ((root, knee, True), (knee, foot, True), (foot, toe, True), (foot, heel, False))
@@ -487,12 +538,26 @@ def infer_rigify_topology(
                     break
                 chain.append(current)
             if len(chain) < 3:
-                raise ConfigError(f"{root!r} ({rig_type}) requires a chain of at least 3 bones")
+                raise ConfigError(
+                    format_iface(
+                        "{root!r} ({rigify_type}) requires a chain of "
+                        "at least 3 bones",
+                        root=root,
+                        rigify_type=rig_type,
+                    )
+                )
             operations.extend((parent, child, True) for parent, child in zip(chain, chain[1:]))
         elif rig_type == "spines.super_head":
             head = find(root, ("head",))
             if not head:
-                raise ConfigError(f"{root!r} ({rig_type}) requires a connected head child")
+                raise ConfigError(
+                    format_iface(
+                        "{root!r} ({rigify_type}) requires a connected "
+                        "head child",
+                        root=root,
+                        rigify_type=rig_type,
+                    )
+                )
             if parent := parents.get(root):
                 operations.append((parent, root, False))
             operations.append((root, head, True))
@@ -501,16 +566,32 @@ def infer_rigify_topology(
 
 def _require_type(value: Any, expected: type, path: str) -> Any:
     if not isinstance(value, expected):
-        raise ConfigError(f"{path} must be {expected.__name__}")
+        raise ConfigError(
+            format_iface(
+                "{path} must be {expected}",
+                path=path,
+                expected=expected.__name__,
+            )
+        )
     return value
 
 
 def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
     _require_type(payload, dict, "configuration")
     if payload.get("format") != FORMAT_NAME:
-        raise ConfigError(f"format must be {FORMAT_NAME!r}")
+        raise ConfigError(
+            format_iface(
+                "format must be {format_name!r}",
+                format_name=FORMAT_NAME,
+            )
+        )
     if payload.get("schema_version") != SCHEMA_VERSION:
-        raise ConfigError(f"unsupported schema_version: {payload.get('schema_version')!r}")
+        raise ConfigError(
+            format_iface(
+                "unsupported schema_version: {version!r}",
+                version=payload.get("schema_version"),
+            )
+        )
 
     bones = _require_type(payload.get("bones"), list, "bones")
     bone_rules = _require_type(payload.get("bone_rules", []), list, "bone_rules")
@@ -570,11 +651,26 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             f"bone_rules[{index}].apply_as_chain",
         )
         if not rule_id:
-            raise ConfigError(f"bone_rules[{index}].rule_id is empty")
+            raise ConfigError(
+                format_iface(
+                    "{path} is empty",
+                    path=f"bone_rules[{index}].rule_id",
+                )
+            )
         if kind not in {"EXACT", "GLOB"}:
-            raise ConfigError(f"bone_rules[{index}].kind is invalid")
+            raise ConfigError(
+                format_iface(
+                    "{path} is invalid",
+                    path=f"bone_rules[{index}].kind",
+                )
+            )
         if not pattern:
-            raise ConfigError(f"bone_rules[{index}].pattern is empty")
+            raise ConfigError(
+                format_iface(
+                    "{path} is empty",
+                    path=f"bone_rules[{index}].pattern",
+                )
+            )
         normalized_bone_rules.append({
             "rule_id": rule_id,
             "kind": kind,
@@ -597,7 +693,12 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             f"collections[{index}].visible_after_generation",
         )
         if ui_row < 0 or row_order < 0:
-            raise ConfigError(f"collections[{index}] row values must be non-negative")
+            raise ConfigError(
+                format_iface(
+                    "{path} row values must be non-negative",
+                    path=f"collections[{index}]",
+                )
+            )
         rules = _require_type(item.get("rules", []), list, f"collections[{index}].rules")
         normalized_rules = []
         for rule_index, rule in enumerate(rules):
@@ -605,10 +706,24 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             kind = rule.get("kind")
             pattern = rule.get("pattern")
             if kind not in {"EXACT", "GLOB"}:
-                raise ConfigError(f"collections[{index}].rules[{rule_index}].kind is invalid")
+                raise ConfigError(
+                    format_iface(
+                        "{path} is invalid",
+                        path=(
+                            f"collections[{index}].rules[{rule_index}].kind"
+                        ),
+                    )
+                )
             _require_type(pattern, str, f"collections[{index}].rules[{rule_index}].pattern")
             if not pattern:
-                raise ConfigError(f"collections[{index}].rules[{rule_index}].pattern is empty")
+                raise ConfigError(
+                    format_iface(
+                        "{path} is empty",
+                        path=(
+                            f"collections[{index}].rules[{rule_index}].pattern"
+                        ),
+                    )
+                )
             normalized_rules.append({"kind": kind, "pattern": pattern})
         normalized_collections.append({
             "name": name,
@@ -627,9 +742,19 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         for field in ("active", "normal", "select"):
             value = _require_type(item.get(field), list, f"color_sets[{index}].{field}")
             if len(value) != 3 or any(not isinstance(component, (int, float)) for component in value):
-                raise ConfigError(f"color_sets[{index}].{field} must contain three numbers")
+                raise ConfigError(
+                    format_iface(
+                        "{path} must contain three numbers",
+                        path=f"color_sets[{index}].{field}",
+                    )
+                )
             if any(component < 0.0 or component > 1.0 for component in value):
-                raise ConfigError(f"color_sets[{index}].{field} values must be between 0 and 1")
+                raise ConfigError(
+                    format_iface(
+                        "{path} values must be between 0 and 1",
+                        path=f"color_sets[{index}].{field}",
+                    )
+                )
             colors[field] = [float(component) for component in value]
         standard_colors_lock = _require_type(
             item.get("standard_colors_lock", False), bool,
@@ -666,8 +791,13 @@ def resolve_collection_rules(
                 matches = [name for name in names if fnmatchcase(name, pattern)]
             if not matches:
                 raise ConfigError(
-                    f"{rule['kind']} pattern {pattern!r} in collection "
-                    f"{collection['name']!r} matched no bones"
+                    format_iface(
+                        "{kind} pattern {pattern!r} in collection "
+                        "{collection!r} matched no bones",
+                        kind=rule["kind"],
+                        pattern=pattern,
+                        collection=collection["name"],
+                    )
                 )
             for name in matches:
                 if name not in members:
@@ -707,32 +837,56 @@ def validate_config(
                 or any(not isinstance(ref, str) for ref in references)
             ):
                 errors.append(
-                    f"{owner} parameter {parameter!r} must be a list "
-                    "of collection names"
+                    format_iface(
+                        "{owner} parameter {parameter!r} must be a list "
+                        "of collection names",
+                        owner=owner,
+                        parameter=parameter,
+                    )
                 )
                 continue
             for reference in references:
                 if reference not in managed_collection_names:
                     errors.append(
-                        f"{owner} parameter {parameter!r} references unknown "
-                        f"managed collection: {reference!r}"
+                        format_iface(
+                            "{owner} parameter {parameter!r} references "
+                            "unknown managed collection: {reference!r}",
+                            owner=owner,
+                            parameter=parameter,
+                            reference=reference,
+                        )
                     )
 
     for item in config["color_sets"]:
         name = item["name"]
         if not name:
-            errors.append("color set name is empty")
+            errors.append(iface_("color set name is empty"))
         elif name in seen_color_sets:
-            errors.append(f"duplicate color set: {name!r}")
+            errors.append(
+                format_iface(
+                    "duplicate color set: {name!r}",
+                    name=name,
+                )
+            )
         seen_color_sets.add(name)
 
     seen_rule_ids = set()
     for rule in config["bone_rules"]:
         if rule["rule_id"] in seen_rule_ids:
-            errors.append(f"duplicate bone rule id: {rule['rule_id']!r}")
+            errors.append(
+                format_iface(
+                    "duplicate bone rule id: {rule_id!r}",
+                    rule_id=rule["rule_id"],
+                )
+            )
         seen_rule_ids.add(rule["rule_id"])
         if rule["rigify_type"] not in rig_types:
-            errors.append(f"Rigify type is unavailable: {rule['rigify_type']!r}")
+            errors.append(
+                format_iface(
+                    "Rigify type is unavailable: {rigify_type!r}",
+                    rigify_type=rule["rigify_type"],
+                )
+            )
         validate_collection_refs(
             f"bone rule {rule['pattern']!r}", rule["parameters"],
         )
@@ -748,54 +902,108 @@ def validate_config(
     for item in effective["bones"]:
         name = item["bone_name"]
         if name in seen_bones:
-            errors.append(f"duplicate bone configuration: {name!r}")
+            errors.append(
+                format_iface(
+                    "duplicate bone configuration: {bone_name!r}",
+                    bone_name=name,
+                )
+            )
         seen_bones.add(name)
         if name not in names:
-            errors.append(f"bone does not exist: {name!r}")
+            errors.append(
+                format_iface(
+                    "bone does not exist: {bone_name!r}",
+                    bone_name=name,
+                )
+            )
         if item["rigify_type"] not in rig_types:
-            errors.append(f"Rigify type is unavailable: {item['rigify_type']!r}")
+            errors.append(
+                format_iface(
+                    "Rigify type is unavailable: {rigify_type!r}",
+                    rigify_type=item["rigify_type"],
+                )
+            )
         chain_bones = item["chain_bones"]
         if chain_bones:
             if chain_bones[0] != name:
                 errors.append(
-                    f"bone {name!r} explicit chain must start with the configured bone"
+                    format_iface(
+                        "bone {bone_name!r} explicit chain must start with "
+                        "the configured bone",
+                        bone_name=name,
+                    )
                 )
             chain_seen: set[str] = set()
             for chain_bone in chain_bones:
                 if chain_bone not in names:
                     errors.append(
-                        f"bone {name!r} explicit chain bone does not exist: {chain_bone!r}"
+                        format_iface(
+                            "bone {bone_name!r} explicit chain bone does "
+                            "not exist: {chain_bone!r}",
+                            bone_name=name,
+                            chain_bone=chain_bone,
+                        )
                     )
                 if chain_bone in chain_seen:
                     errors.append(
-                        f"bone {name!r} explicit chain contains duplicate bone: {chain_bone!r}"
+                        format_iface(
+                            "bone {bone_name!r} explicit chain contains "
+                            "duplicate bone: {chain_bone!r}",
+                            bone_name=name,
+                            chain_bone=chain_bone,
+                        )
                     )
                 chain_seen.add(chain_bone)
             minimum = EXPLICIT_CHAIN_MIN_LENGTHS.get(item["rigify_type"])
             if minimum is None:
                 errors.append(
-                    f"bone {name!r} Rigify type does not support an explicit chain: "
-                    f"{item['rigify_type']!r}"
+                    format_iface(
+                        "bone {bone_name!r} Rigify type does not support "
+                        "an explicit chain: {rigify_type!r}",
+                        bone_name=name,
+                        rigify_type=item["rigify_type"],
+                    )
                 )
             elif len(chain_bones) < minimum:
                 errors.append(
-                    f"bone {name!r} explicit chain requires at least {minimum} bones"
+                    format_iface(
+                        "bone {bone_name!r} explicit chain requires at least "
+                        "{minimum} bones",
+                        bone_name=name,
+                        minimum=minimum,
+                    )
                 )
         validate_collection_refs(f"bone {name!r}", item["parameters"])
 
     for item in config["collections"]:
         name = item["name"]
         if name in seen_collections:
-            errors.append(f"duplicate collection: {name!r}")
+            errors.append(
+                format_iface(
+                    "duplicate collection: {name!r}",
+                    name=name,
+                )
+            )
         seen_collections.add(name)
         if item["color_set"] and item["color_set"] not in seen_color_sets:
             errors.append(
-                f"collection {name!r} references unknown color set: {item['color_set']!r}"
+                format_iface(
+                    "collection {name!r} references unknown color set: "
+                    "{color_set!r}",
+                    name=name,
+                    color_set=item["color_set"],
+                )
             )
         if item["ui_row"] > 0:
             slot = (item["ui_row"], item["row_order"])
             if slot in occupied_slots:
-                errors.append(f"duplicate row_order {slot[1]} in UI row {slot[0]}")
+                errors.append(
+                    format_iface(
+                        "duplicate row_order {order} in UI row {row}",
+                        order=slot[1],
+                        row=slot[0],
+                    )
+                )
             occupied_slots.add(slot)
 
     try:

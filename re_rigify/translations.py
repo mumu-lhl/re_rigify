@@ -170,6 +170,151 @@ _ZH_HANS_DEFAULT = {
     "No bone": "无骨骼",
     "Unnamed": "未命名",
     "Empty": "空",
+    "{path} must be {expected}": "{path} 必须是 {expected}",
+    "{path}.eye_forward_axis is invalid": "{path}.eye_forward_axis 无效",
+    "format must be {format_name!r}": "format 必须是 {format_name!r}",
+    "unsupported schema_version: {version!r}": (
+        "不支持的 schema_version：{version!r}"
+    ),
+    "{path} is empty": "{path} 为空",
+    "{path} is invalid": "{path} 无效",
+    "{path} row values must be non-negative": "{path} 的行值不能为负数",
+    "{path} must contain three numbers": "{path} 必须包含三个数字",
+    "{path} values must be between 0 and 1": (
+        "{path} 的值必须介于 0 和 1 之间"
+    ),
+    "bone does not exist: {bone_name!r}": "骨骼不存在：{bone_name!r}",
+    "{bone_name!r} has ambiguous child chain: {children}": (
+        "{bone_name!r} 的子链不明确：{children}"
+    ),
+    "{kind} bone rule {pattern!r} matched no bones": (
+        "{kind} 骨骼规则 {pattern!r} 未匹配任何骨骼"
+    ),
+    "chain bone rules require source bone topology": "链式骨骼规则需要源骨骼拓扑",
+    "bone rule {pattern!r} Rigify type {rigify_type!r} does not support chain rules": (
+        "骨骼规则 {pattern!r} 的 Rigify 类型 {rigify_type!r} 不支持链式规则"
+    ),
+    "bone rule {pattern!r} chain branches at {bone_name!r}": (
+        "骨骼规则 {pattern!r} 的链在 {bone_name!r} 处分支"
+    ),
+    "bone rule {pattern!r} has disjoint edge {parent!r} -> {child!r}": (
+        "骨骼规则 {pattern!r} 存在断开的边 {parent!r} -> {child!r}"
+    ),
+    "bone rule {pattern!r} chain at {bone_name!r} requires at least {minimum} bones": (
+        "骨骼规则 {pattern!r} 在 {bone_name!r} 处的链至少需要 {minimum} 个骨骼"
+    ),
+    "chain bone rule topology has no reachable root for {bones!r}": (
+        "链式骨骼规则拓扑无法为 {bones!r} 找到可达根节点"
+    ),
+    "{root!r} ({rigify_type}) requires an upper-arm, forearm/elbow, and hand/wrist chain": (
+        "{root!r}（{rigify_type}）需要上臂、前臂/肘部和手/腕部链"
+    ),
+    "{root!r} ({rigify_type}) requires thigh, knee/shin, foot, toe, and heel bones": (
+        "{root!r}（{rigify_type}）需要大腿、膝/小腿、脚、脚趾和脚跟骨骼"
+    ),
+    "{root!r} ({rigify_type}) requires a chain of at least 3 bones": (
+        "{root!r}（{rigify_type}）需要至少 3 个骨骼的链"
+    ),
+    "{root!r} ({rigify_type}) requires a connected head child": (
+        "{root!r}（{rigify_type}）需要已连接的头部子骨骼"
+    ),
+    "{kind} pattern {pattern!r} in collection {collection!r} matched no bones": (
+        "集合 {collection!r} 中的 {kind} 模式 {pattern!r} 未匹配任何骨骼"
+    ),
+    "{owner} parameter {parameter!r} must be a list of collection names": (
+        "{owner} 的参数 {parameter!r} 必须是集合名称列表"
+    ),
+    "{owner} parameter {parameter!r} references unknown managed collection: {reference!r}": (
+        "{owner} 的参数 {parameter!r} 引用了未知的受管集合：{reference!r}"
+    ),
+    "color set name is empty": "颜色集名称为空",
+    "duplicate color set: {name!r}": "颜色集重复：{name!r}",
+    "duplicate bone rule id: {rule_id!r}": "骨骼规则 ID 重复：{rule_id!r}",
+    "Rigify type is unavailable: {rigify_type!r}": (
+        "Rigify 类型不可用：{rigify_type!r}"
+    ),
+    "duplicate bone configuration: {bone_name!r}": (
+        "骨骼配置重复：{bone_name!r}"
+    ),
+    "bone {bone_name!r} explicit chain must start with the configured bone": (
+        "骨骼 {bone_name!r} 的显式链必须从已配置骨骼开始"
+    ),
+    "bone {bone_name!r} explicit chain bone does not exist: {chain_bone!r}": (
+        "骨骼 {bone_name!r} 的显式链骨骼不存在：{chain_bone!r}"
+    ),
+    "bone {bone_name!r} explicit chain contains duplicate bone: {chain_bone!r}": (
+        "骨骼 {bone_name!r} 的显式链包含重复骨骼：{chain_bone!r}"
+    ),
+    "bone {bone_name!r} Rigify type does not support an explicit chain: {rigify_type!r}": (
+        "骨骼 {bone_name!r} 的 Rigify 类型不支持显式链：{rigify_type!r}"
+    ),
+    "bone {bone_name!r} explicit chain requires at least {minimum} bones": (
+        "骨骼 {bone_name!r} 的显式链至少需要 {minimum} 个骨骼"
+    ),
+    "duplicate collection: {name!r}": "集合重复：{name!r}",
+    "collection {name!r} references unknown color set: {color_set!r}": (
+        "集合 {name!r} 引用了未知颜色集：{color_set!r}"
+    ),
+    "duplicate row_order {order} in UI row {row}": (
+        "界面行 {row} 中存在重复的 row_order {order}"
+    ),
+    "roll bone compatibility is only supported by limbs.arm": (
+        "扭转骨兼容仅支持 limbs.arm"
+    ),
+    "roll bone does not exist: {bone_name!r}": "扭转骨不存在：{bone_name!r}",
+    "roll bone {bone_name!r} must have a parent": (
+        "扭转骨 {bone_name!r} 必须具有父级"
+    ),
+    "roll bone compatibility requires at least one roll bone": (
+        "扭转骨兼容至少需要一个扭转骨"
+    ),
+    "{rigify_type!r} does not support forced chain connection": (
+        "{rigify_type!r} 不支持强制链连接"
+    ),
+    "{root!r} ({rigify_type}) requires at least {minimum} connected bones": (
+        "{root!r}（{rigify_type}）至少需要 {minimum} 个已连接骨骼"
+    ),
+    "invalid eye forward axis: {axis!r}": "无效的眼睛朝向轴：{axis!r}",
+    "AUTO forward axis is ambiguous; choose ±X or ±Y": (
+        "AUTO 朝向轴不明确；请选择 ±X 或 ±Y"
+    ),
+    "upper eyelid pattern must match at least 2 bones": (
+        "上眼睑模式必须至少匹配 2 个骨骼"
+    ),
+    "lower eyelid pattern must match at least 2 bones": (
+        "下眼睑模式必须至少匹配 2 个骨骼"
+    ),
+    "upper eyelid pattern {pattern!r} matched fewer than 2 bones": (
+        "上眼睑模式 {pattern!r} 匹配的骨骼少于 2 个"
+    ),
+    "lower eyelid pattern {pattern!r} matched fewer than 2 bones": (
+        "下眼睑模式 {pattern!r} 匹配的骨骼少于 2 个"
+    ),
+    "Bone {bone_name!r}: {error}": "骨骼 {bone_name!r}：{error}",
+    "Bone {bone_name!r}: eyelid bone {eyelid!r} is already claimed by {owner!r}": (
+        "骨骼 {bone_name!r}：眼睑骨 {eyelid!r} 已由 {owner!r} 占用"
+    ),
+    "roll target {target_name!r} was not generated": (
+        "未生成扭转目标 {target_name!r}"
+    ),
+    "unknown or read-only Rigify parameter: {name!r}": (
+        "未知或只读的 Rigify 参数：{name!r}"
+    ),
+    "unsupported collection parameter": "不支持的集合参数",
+    "collection reference name must be a string": "集合引用名称必须是字符串",
+    "bone collection {collection!r} does not exist": (
+        "骨骼集合 {collection!r} 不存在"
+    ),
+    "invalid Rigify parameter {name!r}: {error}": (
+        "Rigify 参数 {name!r} 无效：{error}"
+    ),
+    "Source and generated rig must be different armature objects": (
+        "源骨架和已生成绑定必须是不同的骨架对象"
+    ),
+    "Rigify generation returned {result}": "Rigify 生成返回了 {result}",
+    "Armature {armature!r} is not in the active view layer": (
+        "骨架 {armature!r} 不在活动视图层中"
+    ),
     "Parameters": "参数",
     "Match": "匹配",
     "Exact": "精确",

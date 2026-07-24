@@ -16,13 +16,19 @@ from .compatibility import (
 )
 from .drive import DRIVE_MAP_PROPERTY, ROTATION_DRIVE_MAP_PROPERTY
 from .rigify_adapter import apply_parameters
+from .translations import format_iface
 
 
 def apply_bone_config(obj: bpy.types.Object, bones: list[dict]) -> None:
     for item in bones:
         pose_bone = obj.pose.bones.get(item["bone_name"])
         if pose_bone is None:
-            raise ConfigError(f"bone does not exist: {item['bone_name']!r}")
+            raise ConfigError(
+                format_iface(
+                    "bone does not exist: {bone_name!r}",
+                    bone_name=item["bone_name"],
+                )
+            )
         pose_bone.rigify_type = item["rigify_type"]
         errors = apply_parameters(pose_bone.rigify_parameters, item.get("parameters", {}))
         if errors:
@@ -192,7 +198,12 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         bpy.ops.object.mode_set(mode="POSE")
         result = bpy.ops.pose.rigify_generate()
         if "FINISHED" not in result:
-            raise RuntimeError(f"Rigify generation returned {result}")
+            raise RuntimeError(
+                format_iface(
+                    "Rigify generation returned {result}",
+                    result=result,
+                )
+            )
         created = [obj for obj in bpy.data.objects if obj not in before and obj != duplicate]
         rigs = [obj for obj in created if obj.type == "ARMATURE"]
         result_obj = context.view_layer.objects.active

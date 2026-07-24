@@ -8,6 +8,7 @@ import re
 from typing import Iterable
 
 from .core import ConfigError, choose_drive_target, unique_child_chain
+from .translations import format_iface, iface_
 
 
 CHAIN_MIN_LENGTHS = {
@@ -79,7 +80,11 @@ def plan_roll_bones(obj, config: dict) -> list[RollBonePlan]:
     if not compatibility.get("roll_bones_enabled", False):
         return []
     if config.get("rigify_type") != "limbs.arm":
-        raise ConfigError("roll bone compatibility is only supported by limbs.arm")
+        raise ConfigError(
+            iface_(
+                "roll bone compatibility is only supported by limbs.arm"
+            )
+        )
     segments = config.get("parameters", {}).get("segments", 2)
     segment_suffix = ".001" if segments > 1 else ""
 
@@ -90,16 +95,30 @@ def plan_roll_bones(obj, config: dict) -> list[RollBonePlan]:
             continue
         source_bone = obj.data.bones.get(source_name)
         if source_bone is None:
-            raise ConfigError(f"roll bone does not exist: {source_name!r}")
+            raise ConfigError(
+                format_iface(
+                    "roll bone does not exist: {bone_name!r}",
+                    bone_name=source_name,
+                )
+            )
         if source_bone.parent is None:
-            raise ConfigError(f"roll bone {source_name!r} must have a parent")
+            raise ConfigError(
+                format_iface(
+                    "roll bone {bone_name!r} must have a parent",
+                    bone_name=source_name,
+                )
+            )
         result.append(RollBonePlan(
             source_name,
             f"DEF-{source_bone.parent.name}{segment_suffix}",
             f"MCH-RR-{source_name}",
         ))
     if not result:
-        raise ConfigError("roll bone compatibility requires at least one roll bone")
+        raise ConfigError(
+            iface_(
+                "roll bone compatibility requires at least one roll bone"
+            )
+        )
     return result
 
 
@@ -126,10 +145,23 @@ def plan_connected_chain(
         return []
     minimum = CHAIN_MIN_LENGTHS.get(rigify_type)
     if minimum is None:
-        raise ConfigError(f"{rigify_type!r} does not support forced chain connection")
+        raise ConfigError(
+            format_iface(
+                "{rigify_type!r} does not support forced chain connection",
+                rigify_type=rigify_type,
+            )
+        )
     chain = unique_child_chain(root, parents)
     if len(chain) < minimum:
-        raise ConfigError(f"{root!r} ({rigify_type}) requires at least {minimum} connected bones")
+        raise ConfigError(
+            format_iface(
+                "{root!r} ({rigify_type}) requires at least {minimum} "
+                "connected bones",
+                root=root,
+                rigify_type=rigify_type,
+                minimum=minimum,
+            )
+        )
     return [(parent, child, True) for parent, child in zip(chain, chain[1:])]
 
 
@@ -163,10 +195,19 @@ def _axis_vector(axis: str, eye_head: Point, landmarks: list[EyeLandmark]) -> Po
     if axis in explicit:
         return explicit[axis]
     if axis != "AUTO":
-        raise ConfigError(f"invalid eye forward axis: {axis!r}")
+        raise ConfigError(
+            format_iface(
+                "invalid eye forward axis: {axis!r}",
+                axis=axis,
+            )
+        )
     offset = _subtract(_average([landmark.point for landmark in landmarks]), eye_head)
     if max(abs(offset[0]), abs(offset[1])) < 1e-6:
-        raise ConfigError("AUTO forward axis is ambiguous; choose ±X or ±Y")
+        raise ConfigError(
+            iface_(
+                "AUTO forward axis is ambiguous; choose ±X or ±Y"
+            )
+        )
     if abs(offset[0]) > abs(offset[1]):
         return (1.0 if offset[0] > 0 else -1.0, 0.0, 0.0)
     return (0.0, 1.0 if offset[1] > 0 else -1.0, 0.0)
@@ -237,15 +278,27 @@ def plan_eye_landmarks(
 ) -> EyePlan:
     available = upper + lower
     if forward_axis == "AUTO" and not available:
-        raise ConfigError("AUTO forward axis is ambiguous; choose ±X or ±Y")
+        raise ConfigError(
+            iface_(
+                "AUTO forward axis is ambiguous; choose ±X or ±Y"
+            )
+        )
     forward = _axis_vector(forward_axis, eye_head, available)
     if len(upper) < 2:
         if not synthetic_fallback:
-            raise ConfigError("upper eyelid pattern must match at least 2 bones")
+            raise ConfigError(
+                iface_(
+                    "upper eyelid pattern must match at least 2 bones"
+                )
+            )
         upper = _synthetic_landmarks(eye_head, eye_length, forward, upper=True)
     if len(lower) < 2:
         if not synthetic_fallback:
-            raise ConfigError("lower eyelid pattern must match at least 2 bones")
+            raise ConfigError(
+                iface_(
+                    "lower eyelid pattern must match at least 2 bones"
+                )
+            )
         lower = _synthetic_landmarks(eye_head, eye_length, forward, upper=False)
     horizontal_axis = 0 if forward[1] else 1
     return EyePlan(
@@ -277,7 +330,12 @@ def build_compatibility_plan(obj, bone_configs: list[dict]) -> CompatibilityPlan
         ):
             eye_bone = obj.data.bones.get(config["bone_name"])
             if eye_bone is None:
-                raise ConfigError(f"bone does not exist: {config['bone_name']!r}")
+                raise ConfigError(
+                    format_iface(
+                        "bone does not exist: {bone_name!r}",
+                        bone_name=config["bone_name"],
+                    )
+                )
             upper_pattern = compatibility.get("upper_lid_pattern", "")
             lower_pattern = compatibility.get("lower_lid_pattern", "")
             upper = [
@@ -292,11 +350,19 @@ def build_compatibility_plan(obj, bone_configs: list[dict]) -> CompatibilityPlan
             ]
             if len(upper) < 2 and not compatibility.get("synthetic_lids_fallback", False):
                 raise ConfigError(
-                    f"upper eyelid pattern {upper_pattern!r} matched fewer than 2 bones"
+                    format_iface(
+                        "upper eyelid pattern {pattern!r} matched fewer "
+                        "than 2 bones",
+                        pattern=upper_pattern,
+                    )
                 )
             if len(lower) < 2 and not compatibility.get("synthetic_lids_fallback", False):
                 raise ConfigError(
-                    f"lower eyelid pattern {lower_pattern!r} matched fewer than 2 bones"
+                    format_iface(
+                        "lower eyelid pattern {pattern!r} matched fewer "
+                        "than 2 bones",
+                        pattern=lower_pattern,
+                    )
                 )
             plan.eye_plans.append(plan_eye_landmarks(
                 eye_bone.name,
@@ -318,7 +384,13 @@ def validate_compatibility(obj, bone_configs: list[dict]) -> tuple[str, ...]:
         try:
             plan = build_compatibility_plan(obj, [config])
         except ConfigError as exc:
-            errors.append(f"Bone {bone_name!r}: {exc}")
+            errors.append(
+                format_iface(
+                    "Bone {bone_name!r}: {error}",
+                    bone_name=bone_name,
+                    error=exc,
+                )
+            )
             continue
         for eye_plan in plan.eye_plans:
             for segment in eye_plan.upper + eye_plan.lower:
@@ -328,8 +400,13 @@ def validate_compatibility(obj, bone_configs: list[dict]) -> tuple[str, ...]:
                 previous = claimed_eyelids.get(source_name)
                 if previous is not None:
                     errors.append(
-                        f"Bone {bone_name!r}: eyelid bone {source_name!r} "
-                        f"is already claimed by {previous!r}"
+                        format_iface(
+                            "Bone {bone_name!r}: eyelid bone {eyelid!r} "
+                            "is already claimed by {owner!r}",
+                            bone_name=bone_name,
+                            eyelid=source_name,
+                            owner=previous,
+                        )
                     )
                 else:
                     claimed_eyelids[source_name] = bone_name
@@ -399,11 +476,19 @@ def apply_roll_helpers(context, source, rig, plans: list[RollBonePlan]) -> dict[
             target = edit_bones.get(plan.target_name)
             if target is None:
                 raise ConfigError(
-                    f"roll target {plan.target_name!r} was not generated"
+                    format_iface(
+                        "roll target {target_name!r} was not generated",
+                        target_name=plan.target_name,
+                    )
                 )
             source_bone = source.data.bones.get(plan.source_name)
             if source_bone is None:
-                raise ConfigError(f"roll bone does not exist: {plan.source_name!r}")
+                raise ConfigError(
+                    format_iface(
+                        "roll bone does not exist: {bone_name!r}",
+                        bone_name=plan.source_name,
+                    )
+                )
             helper = edit_bones.get(plan.helper_name) or edit_bones.new(plan.helper_name)
             helper.head = source_to_rig @ source_bone.head_local
             helper.tail = source_to_rig @ source_bone.tail_local

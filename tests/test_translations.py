@@ -246,3 +246,51 @@ class DynamicMessageSourceTests(unittest.TestCase):
             if isinstance(text, ast.JoinedStr):
                 bad.append(call.lineno)
         self.assertEqual(bad, [])
+
+
+class ErrorTranslationTests(unittest.TestCase):
+    MODULES = (
+        "re_rigify/core.py",
+        "re_rigify/compatibility.py",
+        "re_rigify/generate.py",
+        "re_rigify/rigify_adapter.py",
+        "re_rigify/drive.py",
+    )
+
+    def test_user_visible_f_string_errors_use_format_iface(self):
+        bad = []
+        for path in self.MODULES:
+            tree = ast.parse(Path(path).read_text())
+            for node in ast.walk(tree):
+                message = None
+                if (
+                    isinstance(node, ast.Raise)
+                    and isinstance(node.exc, ast.Call)
+                    and node.exc.args
+                ):
+                    message = node.exc.args[0]
+                elif (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "append"
+                    and node.args
+                ):
+                    message = node.args[0]
+                if isinstance(message, ast.JoinedStr):
+                    bad.append((path, node.lineno))
+        self.assertEqual(bad, [])
+
+    def test_core_errors_stay_english_without_blender(self):
+        from re_rigify.core import ConfigError, resolve_bone_rules
+
+        with self.assertRaisesRegex(ConfigError, "matched no bones"):
+            resolve_bone_rules(
+                ["Root"],
+                [{
+                    "rule_id": "missing",
+                    "kind": "GLOB",
+                    "pattern": "Finger_*",
+                    "rigify_type": "basic.super_copy",
+                    "parameters": {},
+                }],
+            )

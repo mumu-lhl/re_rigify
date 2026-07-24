@@ -8,6 +8,8 @@ from typing import Any
 import addon_utils
 import bpy
 
+from .translations import format_iface, iface_
+
 
 class RigifyParameterLayout:
     """Route carrier-only Rigify operators without replacing the panel context."""
@@ -78,26 +80,48 @@ def apply_parameters(params: Any, values: dict[str, Any]) -> list[str]:
         if name not in properties or (
             properties[name].is_readonly and properties[name].type != "COLLECTION"
         ):
-            errors.append(f"unknown or read-only Rigify parameter: {name!r}")
+            errors.append(
+                format_iface(
+                    "unknown or read-only Rigify parameter: {name!r}",
+                    name=name,
+                )
+            )
             continue
         try:
             prop = properties[name]
             if prop.type == "COLLECTION":
                 refs = getattr(params, name)
                 if not is_collection_ref_list_prop(refs) or not isinstance(value, list):
-                    raise TypeError("unsupported collection parameter")
+                    raise TypeError(
+                        iface_("unsupported collection parameter")
+                    )
                 refs.clear()
                 for collection_name in value:
                     if not isinstance(collection_name, str):
-                        raise TypeError("collection reference name must be a string")
+                        raise TypeError(
+                            iface_(
+                                "collection reference name must be a string"
+                            )
+                        )
                     collection = params.id_data.data.collections_all.get(collection_name)
                     if collection is None:
-                        raise ValueError(f"bone collection {collection_name!r} does not exist")
+                        raise ValueError(
+                            format_iface(
+                                "bone collection {collection!r} does not exist",
+                                collection=collection_name,
+                            )
+                        )
                     refs.add().set_collection(collection)
                 continue
             setattr(params, name, value)
         except (AttributeError, TypeError, ValueError) as exc:
-            errors.append(f"invalid Rigify parameter {name!r}: {exc}")
+            errors.append(
+                format_iface(
+                    "invalid Rigify parameter {name!r}: {error}",
+                    name=name,
+                    error=exc,
+                )
+            )
     return errors
 
 

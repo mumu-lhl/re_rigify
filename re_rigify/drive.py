@@ -7,6 +7,7 @@ import json
 import bpy
 
 from .core import choose_drive_spec, resolve_bone_rule_rows
+from .translations import format_iface, iface_
 
 
 CONSTRAINT_PREFIX = "Re-Rigify Drive"
@@ -31,7 +32,12 @@ def _context_state():
 def _set_object_mode(obj: bpy.types.Object, mode: str) -> None:
     context = bpy.context
     if obj.name not in context.view_layer.objects:
-        raise RuntimeError(f"Armature {obj.name!r} is not in the active view layer")
+        raise RuntimeError(
+            format_iface(
+                "Armature {armature!r} is not in the active view layer",
+                armature=obj.name,
+            )
+        )
     obj.hide_set(False)
     obj.hide_select = False
     obj.select_set(True)
@@ -299,7 +305,11 @@ def _load_drive_map(rig: bpy.types.Object, property_name: str) -> dict[str, str]
 
 def connect_source_to_rig(source: bpy.types.Object, rig: bpy.types.Object) -> tuple[int, list[str]]:
     if source == rig or source.type != "ARMATURE" or rig.type != "ARMATURE":
-        raise ValueError("Source and generated rig must be different armature objects")
+        raise ValueError(
+            iface_(
+                "Source and generated rig must be different armature objects"
+            )
+        )
     remove_drive_constraints(source)
     target_names = set(rig.pose.bones.keys())
     explicit = _load_drive_map(rig, DRIVE_MAP_PROPERTY)
