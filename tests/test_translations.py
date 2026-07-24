@@ -210,3 +210,39 @@ class PackageLifecycleTests(unittest.TestCase):
             called_modules(functions["unregister"]),
             ["ui", "operators", "drive", "blender_config", "translations"],
         )
+
+
+class DynamicMessageSourceTests(unittest.TestCase):
+    def test_reports_do_not_receive_raw_literals_or_f_strings(self):
+        tree = ast.parse(Path("re_rigify/operators.py").read_text())
+        bad = []
+        for call in ast.walk(tree):
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "report"
+                and len(call.args) >= 2
+            ):
+                continue
+            message = call.args[1]
+            if isinstance(message, (ast.Constant, ast.JoinedStr)):
+                bad.append(call.lineno)
+        self.assertEqual(bad, [])
+
+    def test_dynamic_layout_text_uses_translation_helpers(self):
+        tree = ast.parse(Path("re_rigify/ui.py").read_text())
+        bad = []
+        for call in ast.walk(tree):
+            if not (
+                isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "label"
+            ):
+                continue
+            text = next(
+                (item.value for item in call.keywords if item.arg == "text"),
+                None,
+            )
+            if isinstance(text, ast.JoinedStr):
+                bad.append(call.lineno)
+        self.assertEqual(bad, [])

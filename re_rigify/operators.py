@@ -34,6 +34,7 @@ from .generate import generate_rig, validate_bone_parameters
 from .compatibility import validate_compatibility
 from .drive import connect_source_to_rig, remove_drive_constraints
 from .rigify_adapter import available_rig_types, is_rigify_enabled
+from .translations import format_iface, iface_
 
 
 def active_armature(context):
@@ -85,13 +86,18 @@ def validate_active(context):
 
     obj = active_armature(context)
     if not obj:
-        return None, ("Select an armature object",)
+        return None, (iface_("Select an armature object"),)
     if not is_rigify_enabled():
-        return obj, ("Rigify is not enabled",)
+        return obj, (iface_("Rigify is not enabled"),)
     try:
         payload = synchronized_payload(obj, include_managed=True)
     except (ConfigError, ValueError, json.JSONDecodeError) as exc:
-        return obj, (f"Invalid stored parameter JSON: {exc}",)
+        return obj, (
+            format_iface(
+                "Invalid stored parameter JSON: {error}",
+                error=exc,
+            ),
+        )
     parents, aligned_edges = armature_rule_topology(obj.data)
     result = validate_config(
         payload,
@@ -140,7 +146,7 @@ class RERIGIFY_OT_BoneAdd(bpy.types.Operator):
 
         obj = active_armature(context)
         if not obj:
-            self.report({"ERROR"}, "Select an armature")
+            self.report({"ERROR"}, iface_("Select an armature"))
             return {"CANCELLED"}
 
         if obj.mode == "EDIT":
@@ -163,7 +169,10 @@ class RERIGIFY_OT_BoneAdd(bpy.types.Operator):
             selected_names = {active.name}
         selected = [bone.name for bone in ordered_bones if bone.name in selected_names]
         if not selected:
-            self.report({"ERROR"}, "Select one or more armature bones")
+            self.report(
+                {"ERROR"},
+                iface_("Select one or more armature bones"),
+            )
             return {"CANCELLED"}
 
         settings = obj.data.re_rigify
@@ -191,7 +200,14 @@ class RERIGIFY_OT_BoneAdd(bpy.types.Operator):
         active_item = settings.bones[settings.active_bone_index]
         prepare_parameter_carrier(context, obj, active_item, settings.active_bone_index)
         skipped = len(selected) - len(added_indices)
-        self.report({"INFO"}, f"Added {len(added_indices)} bone(s); skipped {skipped} existing")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Added {added} bone(s); skipped {skipped} existing",
+                added=len(added_indices),
+                skipped=skipped,
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -363,7 +379,12 @@ class RERIGIFY_OT_BoneRuleSync(bpy.types.Operator):
             return {"CANCELLED"}
         self.report(
             {"INFO"},
-            f"Rules added {added}, updated {updated}, removed {removed} bones",
+            format_iface(
+                "Rules added {added}, updated {updated}, removed {removed} bones",
+                added=added,
+                updated=updated,
+                removed=removed,
+            ),
         )
         return {"FINISHED"}
 
@@ -401,7 +422,10 @@ class RERIGIFY_OT_ChainAddSelected(bpy.types.Operator):
             if active is not None:
                 selected_names = {active.name}
         if not selected_names:
-            self.report({"ERROR"}, "Select one or more armature bones")
+            self.report(
+                {"ERROR"},
+                iface_("Select one or more armature bones"),
+            )
             return {"CANCELLED"}
 
         existing = set(chain_bones_from_item(item))
@@ -417,7 +441,13 @@ class RERIGIFY_OT_ChainAddSelected(bpy.types.Operator):
             entry = item.chain_bones.add()
             entry.bone_name = bone_name
         item.active_chain_index = max(0, len(item.chain_bones) - 1)
-        self.report({"INFO"}, f"Added {len(ordered)} explicit chain bone(s)")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Added {count} explicit chain bone(s)",
+                count=len(ordered),
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -497,13 +527,30 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
         for bone_name, _rig_type, _chain_bones, _parameters, _compat in snapshots:
             target_name = mirror_name(bone_name)
             if target_name == bone_name:
-                self.report({"ERROR"}, f"{bone_name!r} has no L/R side suffix")
+                self.report(
+                    {"ERROR"},
+                    format_iface(
+                        "{bone_name!r} has no L/R side suffix",
+                        bone_name=bone_name,
+                    ),
+                )
                 return {"CANCELLED"}
             if target_name not in obj.data.bones:
-                self.report({"ERROR"}, f"Mirrored bone {target_name!r} does not exist")
+                self.report(
+                    {"ERROR"},
+                    format_iface(
+                        "Mirrored bone {bone_name!r} does not exist",
+                        bone_name=target_name,
+                    ),
+                )
                 return {"CANCELLED"}
             if target_name in source_names:
-                self.report({"ERROR"}, "Do not select both sides of the same mirrored pair")
+                self.report(
+                    {"ERROR"},
+                    iface_(
+                        "Do not select both sides of the same mirrored pair"
+                    ),
+                )
                 return {"CANCELLED"}
 
         remove_parameter_carrier()
@@ -538,7 +585,13 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
         settings.active_bone_index = last_target_index
         target = settings.bones[last_target_index]
         prepare_parameter_carrier(context, obj, target, last_target_index)
-        self.report({"INFO"}, f"Mirrored {len(snapshots)} configuration(s)")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Mirrored {count} configuration(s)",
+                count=len(snapshots),
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -563,7 +616,10 @@ class RERIGIFY_OT_CopyParametersToSelected(bpy.types.Operator):
             if index != source_index and item.collection_selected
         ]
         if not targets:
-            self.report({"ERROR"}, "Check at least one target bone")
+            self.report(
+                {"ERROR"},
+                iface_("Check at least one target bone"),
+            )
             return {"CANCELLED"}
         parameters_json = source.parameters_json
         compatibility = _compatibility_from_item(source)
@@ -576,7 +632,13 @@ class RERIGIFY_OT_CopyParametersToSelected(bpy.types.Operator):
             item.collection_selected = False
         remove_parameter_carrier()
         prepare_parameter_carrier(context, obj, source, source_index)
-        self.report({"INFO"}, f"Copied bone settings to {len(targets)} bone(s)")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Copied bone settings to {count} bone(s)",
+                count=len(targets),
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -836,7 +898,13 @@ class RERIGIFY_OT_ColorSetAddDefaults(bpy.types.Operator):
             added += 1
         if added:
             settings.active_color_index = len(settings.color_sets) - 1
-        self.report({"INFO"}, f"Added {added} Rigify default color set(s)")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Added {count} Rigify default color set(s)",
+                count=added,
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -861,16 +929,29 @@ class RERIGIFY_OT_CollectionAddMarkedBones(bpy.types.Operator):
     def execute(self, context):
         settings = active_armature(context).data.re_rigify
         if not settings.collections:
-            self.report({"ERROR"}, "Create a bone collection configuration first")
+            self.report(
+                {"ERROR"},
+                iface_("Create a bone collection configuration first"),
+            )
             return {"CANCELLED"}
         if not settings.bones:
-            self.report({"ERROR"}, "No configured bones to add")
+            self.report(
+                {"ERROR"},
+                iface_("No configured bones to add"),
+            )
             return {"CANCELLED"}
         collection = settings.collections[settings.active_collection_index]
         added = _add_selected_bones_to_active_collection(settings)
         for item in settings.bones:
             item.collection_selected = False
-        self.report({"INFO"}, f"Added {added} bone(s) to {collection.name}")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Added {count} bone(s) to {collection}",
+                count=added,
+                collection=collection.name,
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -896,7 +977,10 @@ class RERIGIFY_OT_CollectionAddViewportBones(bpy.types.Operator):
                 bone.name for bone in (context.selected_pose_bones or ()) if bone.id_data == obj
             ]
         if not selected:
-            self.report({"ERROR"}, "Select one or more bones in the 3D View")
+            self.report(
+                {"ERROR"},
+                iface_("Select one or more bones in the 3D View"),
+            )
             return {"CANCELLED"}
         existing = {rule.pattern for rule in collection.rules if rule.kind == "EXACT"}
         added = 0
@@ -909,7 +993,14 @@ class RERIGIFY_OT_CollectionAddViewportBones(bpy.types.Operator):
             existing.add(name)
             added += 1
         collection.active_rule_index = max(0, len(collection.rules) - 1)
-        self.report({"INFO"}, f"Added {added} selected bone(s) to {collection.name}")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Added {count} selected bone(s) to {collection}",
+                count=added,
+                collection=collection.name,
+            ),
+        )
         return {"FINISHED"}
 
 
@@ -950,10 +1041,17 @@ class RERIGIFY_OT_Validate(bpy.types.Operator):
         if errors:
             if obj:
                 obj.data.re_rigify.validation_message = "\n".join(errors)
-            self.report({"ERROR"}, f"Validation failed with {len(errors)} error(s)")
+            self.report(
+                {"ERROR"},
+                format_iface(
+                    "Validation failed with {count} error(s)",
+                    count=len(errors),
+                ),
+            )
             return {"CANCELLED"}
-        obj.data.re_rigify.validation_message = "Configuration is valid"
-        self.report({"INFO"}, "Configuration is valid")
+        message = iface_("Configuration is valid")
+        obj.data.re_rigify.validation_message = message
+        self.report({"INFO"}, message)
         return {"FINISHED"}
 
 
@@ -966,7 +1064,10 @@ class RERIGIFY_OT_Export(bpy.types.Operator, ExportHelper):
     def execute(self, context):
         obj, errors = validate_active(context)
         if errors:
-            self.report({"ERROR"}, "Fix validation errors before exporting")
+            self.report(
+                {"ERROR"},
+                iface_("Fix validation errors before exporting"),
+            )
             return {"CANCELLED"}
         Path(self.filepath).write_text(
             json.dumps(
@@ -1020,7 +1121,13 @@ class RERIGIFY_OT_Import(bpy.types.Operator, ImportHelper):
             ))
         if errors:
             obj.data.re_rigify.validation_message = "\n".join(errors)
-            self.report({"ERROR"}, f"Import rejected with {len(errors)} error(s)")
+            self.report(
+                {"ERROR"},
+                format_iface(
+                    "Import rejected with {count} error(s)",
+                    count=len(errors),
+                ),
+            )
             return {"CANCELLED"}
         payload_to_armature(obj.data, payload)
         return {"FINISHED"}
@@ -1035,7 +1142,10 @@ class RERIGIFY_OT_Generate(bpy.types.Operator):
         obj, errors = validate_active(context)
         if errors:
             obj.data.re_rigify.validation_message = "\n".join(errors)
-            self.report({"ERROR"}, "Fix validation errors before generating")
+            self.report(
+                {"ERROR"},
+                iface_("Fix validation errors before generating"),
+            )
             return {"CANCELLED"}
         try:
             generated = generate_rig(
@@ -1044,12 +1154,22 @@ class RERIGIFY_OT_Generate(bpy.types.Operator):
             )
             mapped, unmatched = connect_source_to_rig(obj, generated)
         except Exception as exc:
-            self.report({"ERROR"}, f"Rigify generation failed: {exc}")
+            self.report(
+                {"ERROR"},
+                format_iface(
+                    "Rigify generation failed: {error}",
+                    error=exc,
+                ),
+            )
             return {"CANCELLED"}
         select_only(context, generated)
         self.report(
             {"INFO"},
-            f"Generated rig drives {mapped} source bones; {len(unmatched)} unmatched",
+            format_iface(
+                "Generated rig drives {mapped} source bones; {unmatched} unmatched",
+                mapped=mapped,
+                unmatched=len(unmatched),
+            ),
         )
         return {"FINISHED"}
 
@@ -1063,14 +1183,29 @@ class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
     def execute(self, context):
         source = active_armature(context)
         if source is None:
-            self.report({"WARNING"}, "Select the source armature")
+            self.report(
+                {"WARNING"},
+                iface_("Select the source armature"),
+            )
             return {"CANCELLED"}
         try:
             removed = remove_drive_constraints(source)
         except Exception as exc:
-            self.report({"WARNING"}, f"Failed to remove Rigify drive: {exc}")
+            self.report(
+                {"WARNING"},
+                format_iface(
+                    "Failed to remove Rigify drive: {error}",
+                    error=exc,
+                ),
+            )
             return {"CANCELLED"}
-        self.report({"INFO"}, f"Removed {removed} Re-Rigify constraints")
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Removed {count} Re-Rigify constraints",
+                count=removed,
+            ),
+        )
         return {"FINISHED"}
 
 

@@ -18,6 +18,7 @@ from .rigify_adapter import (
     draw_parameters,
     parameter_json,
 )
+from .translations import format_iface, iface_
 
 
 HELPER_NAME = "__ReRigify_Parameter_Carrier__"
@@ -354,7 +355,10 @@ class RERIGIFY_UL_Bones(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
         layout.prop(item, "collection_selected", text="")
         layout.label(text=item.bone_name, icon="BONE_DATA", translate=False)
-        layout.label(text=item.rigify_type or "No type", translate=False)
+        layout.label(
+            text=item.rigify_type or iface_("No type"),
+            translate=False,
+        )
 
     def filter_items(self, _context, data, property_name):
         from .rules import rule_dicts
@@ -386,9 +390,14 @@ class RERIGIFY_UL_BoneRules(bpy.types.UIList):
         _active_data, _active_propname, _index,
     ):
         layout.label(
-            text=item.pattern or "Empty", icon="FILTER", translate=False,
+            text=item.pattern or iface_("Empty"),
+            icon="FILTER",
+            translate=False,
         )
-        layout.label(text=item.rigify_type or "No type", translate=False)
+        layout.label(
+            text=item.rigify_type or iface_("No type"),
+            translate=False,
+        )
 
 
 class RERIGIFY_UL_BoneRulePreview(bpy.types.UIList):
@@ -431,25 +440,47 @@ class RERIGIFY_UL_BoneRulePreview(bpy.types.UIList):
 
 class RERIGIFY_UL_ChainBones(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
-        layout.label(text=item.bone_name or "No bone", icon="BONE_DATA", translate=False)
+        layout.label(
+            text=item.bone_name or iface_("No bone"),
+            icon="BONE_DATA",
+            translate=False,
+        )
 
 
 class RERIGIFY_UL_Collections(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
-        layout.label(text=item.name or "Unnamed", icon="GROUP_BONE", translate=False)
-        layout.label(text=f"Row {item.ui_row} / {item.row_order}", translate=False)
+        layout.label(
+            text=item.name or iface_("Unnamed"),
+            icon="GROUP_BONE",
+            translate=False,
+        )
+        layout.label(
+            text=format_iface(
+                "Row {row} / {order}",
+                row=item.ui_row,
+                order=item.row_order,
+            ),
+            translate=False,
+        )
 
 
 class RERIGIFY_UL_Rules(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
-        layout.label(text=item.kind, translate=False)
-        layout.label(text=item.pattern or "Empty", translate=False)
+        kind = item.bl_rna.properties["kind"].enum_items[item.kind].name
+        layout.label(text=iface_(kind), translate=False)
+        layout.label(
+            text=item.pattern or iface_("Empty"),
+            translate=False,
+        )
 
 
 class RERIGIFY_UL_ColorSets(bpy.types.UIList):
     def draw_item(self, _context, layout, _data, item, _icon, _active_data, _active_propname, _index):
         layout.prop(item, "normal", text="")
-        layout.label(text=item.name or "Unnamed", translate=False)
+        layout.label(
+            text=item.name or iface_("Unnamed"),
+            translate=False,
+        )
 
 
 def _active_parameter_refs(context, prop_name):
@@ -536,9 +567,21 @@ class RERIGIFY_PT_Main(_RERIGIFY_PT_Base, bpy.types.Panel):
         settings = obj.data.re_rigify
 
         summary = layout.row(align=True)
-        summary.label(text=f"{len(settings.bones)} Bones", icon="BONE_DATA", translate=False)
         summary.label(
-            text=f"{len(settings.collections)} Collections", icon="GROUP_BONE", translate=False,
+            text=format_iface(
+                "{count} Bones",
+                count=len(settings.bones),
+            ),
+            icon="BONE_DATA",
+            translate=False,
+        )
+        summary.label(
+            text=format_iface(
+                "{count} Collections",
+                count=len(settings.collections),
+            ),
+            icon="GROUP_BONE",
+            translate=False,
         )
         layout.operator(
             "re_rigify.generate", text="Generate & Connect Rigify Rig", icon="ARMATURE_DATA"
@@ -546,7 +589,10 @@ class RERIGIFY_PT_Main(_RERIGIFY_PT_Base, bpy.types.Panel):
         if obj.re_rigify_generated_rig:
             row = layout.row(align=True)
             row.label(
-                text=f"Driven by {obj.re_rigify_generated_rig.name}",
+                text=format_iface(
+                    "Driven by {rig_name}",
+                    rig_name=obj.re_rigify_generated_rig.name,
+                ),
                 icon="CONSTRAINT_BONE",
                 translate=False,
             )
@@ -613,16 +659,20 @@ class RERIGIFY_PT_BoneRules(_RERIGIFY_PT_Base, bpy.types.Panel):
             else:
                 if rule.apply_as_chain:
                     preview_box.label(
-                        text=(
-                            f"{len(preview['bone_names'])} bones / "
-                            f"{preview['chain_count']} chains"
+                        text=format_iface(
+                            "{bone_count} bones / {chain_count} chains",
+                            bone_count=len(preview["bone_names"]),
+                            chain_count=preview["chain_count"],
                         ),
                         icon="LINKED",
                         translate=False,
                     )
                 else:
                     preview_box.label(
-                        text=f"{len(preview['bone_names'])} bones",
+                        text=format_iface(
+                            "{bone_count} bones",
+                            bone_count=len(preview["bone_names"]),
+                        ),
                         icon="BONE_DATA",
                         translate=False,
                     )
@@ -668,7 +718,12 @@ class RERIGIFY_PT_BoneRuleParameters(
             )
         except Exception as exc:
             layout.label(
-                text=f"Parameter UI unavailable: {exc}", icon="ERROR",
+                text=format_iface(
+                    "Parameter UI unavailable: {error}",
+                    error=exc,
+                ),
+                icon="ERROR",
+                translate=False,
             )
 
 
@@ -796,7 +851,14 @@ class RERIGIFY_PT_BoneParameters(_RERIGIFY_PT_Base, bpy.types.Panel):
                 draw_parameters(parameter_layout, carrier)
                 layout.label(text="Parameters save automatically", icon="CHECKMARK")
             except Exception as exc:
-                layout.label(text=f"Parameter UI unavailable: {exc}", icon="ERROR")
+                layout.label(
+                    text=format_iface(
+                        "Parameter UI unavailable: {error}",
+                        error=exc,
+                    ),
+                    icon="ERROR",
+                    translate=False,
+                )
         else:
             request_parameter_carrier(obj, item, settings.active_bone_index)
             layout.label(text="Loading Rigify parameters…", icon="TIME")

@@ -105,6 +105,71 @@ _ZH_HANS_DEFAULT = {
     "Upper Arm Roll": "上臂扭转骨",
     "Upper Eyelids": "上眼睑",
     "Visible After Generation": "生成后可见",
+    "Select an armature object": "请选择骨架对象",
+    "Rigify is not enabled": "Rigify 未启用",
+    "Invalid stored parameter JSON: {error}": "已存储的参数 JSON 无效：{error}",
+    "Select an armature": "请选择骨架",
+    "Select one or more armature bones": "请选择一个或多个骨架骨骼",
+    "Added {added} bone(s); skipped {skipped} existing": (
+        "已添加 {added} 个骨骼；跳过 {skipped} 个已有骨骼"
+    ),
+    "Rules added {added}, updated {updated}, removed {removed} bones": (
+        "规则已添加 {added} 个、更新 {updated} 个、移除 {removed} 个骨骼"
+    ),
+    "Added {count} explicit chain bone(s)": "已添加 {count} 个显式链骨骼",
+    "{bone_name!r} has no L/R side suffix": "{bone_name!r} 没有 L/R 侧后缀",
+    "Mirrored bone {bone_name!r} does not exist": (
+        "镜像骨骼 {bone_name!r} 不存在"
+    ),
+    "Do not select both sides of the same mirrored pair": (
+        "请勿同时选择同一镜像对的两侧"
+    ),
+    "Mirrored {count} configuration(s)": "已镜像 {count} 个配置",
+    "Check at least one target bone": "请至少勾选一个目标骨骼",
+    "Copied bone settings to {count} bone(s)": (
+        "已将骨骼设置复制到 {count} 个骨骼"
+    ),
+    "Added {count} Rigify default color set(s)": (
+        "已添加 {count} 个 Rigify 默认颜色集"
+    ),
+    "Create a bone collection configuration first": "请先创建骨骼集合配置",
+    "No configured bones to add": "没有可添加的已配置骨骼",
+    "Added {count} bone(s) to {collection}": (
+        "已将 {count} 个骨骼添加到 {collection}"
+    ),
+    "Select one or more bones in the 3D View": (
+        "请在三维视图中选择一个或多个骨骼"
+    ),
+    "Added {count} selected bone(s) to {collection}": (
+        "已将 {count} 个选中骨骼添加到 {collection}"
+    ),
+    "Validation failed with {count} error(s)": "验证失败，共 {count} 个错误",
+    "Configuration is valid": "配置有效",
+    "Fix validation errors before exporting": "导出前请修复验证错误",
+    "Import rejected with {count} error(s)": "导入被拒绝，共 {count} 个错误",
+    "Fix validation errors before generating": "生成前请修复验证错误",
+    "Rigify generation failed: {error}": "Rigify 生成失败：{error}",
+    "Generated rig drives {mapped} source bones; {unmatched} unmatched": (
+        "已生成的绑定驱动 {mapped} 个源骨骼；{unmatched} 个未匹配"
+    ),
+    "Select the source armature": "请选择源骨架",
+    "Failed to remove Rigify drive: {error}": "移除 Rigify 驱动失败：{error}",
+    "Removed {count} Re-Rigify constraints": (
+        "已移除 {count} 个 Re-Rigify 约束"
+    ),
+    "{bone_count} bones / {chain_count} chains": (
+        "{bone_count} 个骨骼 / {chain_count} 条链"
+    ),
+    "{bone_count} bones": "{bone_count} 个骨骼",
+    "{count} Bones": "{count} 个骨骼",
+    "{count} Collections": "{count} 个集合",
+    "Driven by {rig_name}": "由 {rig_name} 驱动",
+    "Row {row} / {order}": "行 {row} / {order}",
+    "Parameter UI unavailable: {error}": "参数界面不可用：{error}",
+    "No type": "无类型",
+    "No bone": "无骨骼",
+    "Unnamed": "未命名",
+    "Empty": "空",
     "Parameters": "参数",
     "Match": "匹配",
     "Exact": "精确",
