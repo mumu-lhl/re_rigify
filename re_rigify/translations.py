@@ -8,8 +8,103 @@ OPERATOR_CONTEXT = "Operator"
 TRANSLATION_DOMAIN = f"{__name__}.catalog"
 
 _ZH_HANS_DEFAULT = {
+    "+X": "+X",
+    "+Y": "+Y",
+    "-X": "-X",
+    "-Y": "-Y",
+    "Active Bone Parameters": "活动骨骼参数",
+    "Active Row": "活动行",
+    "Add Checked Configs": "添加勾选的配置",
+    "Add Viewport Selection": "添加视图选中项",
+    "Add all selected Pose/Edit Mode bones, or the active bone as a fallback": (
+        "添加姿态/编辑模式中所有选中的骨骼；没有选中项时添加活动骨骼"
+    ),
+    "Add bones selected in the 3D View while in Pose or Edit Mode": (
+        "添加三维视图中姿态或编辑模式下选中的骨骼"
+    ),
+    "Add checked bones, or the active list bone if none are checked": (
+        "添加勾选的骨骼；没有勾选项时添加列表中的活动骨骼"
+    ),
+    "Add missing default Rigify color sets without replacing existing sets": (
+        "添加缺失的 Rigify 默认颜色集，不替换现有颜色集"
+    ),
+    "All": "全部",
+    "Apply as Chain and Force Connect": "作为链应用并强制连接",
+    "Automatic": "自动",
     "Bone": "骨骼",
+    "Bone Collections": "骨骼集合",
+    "Bone Matching Rules": "骨骼匹配规则",
+    "Bone Pattern": "骨骼模式",
+    "Bone Setup": "骨骼设置",
+    "Build Skin Eye Topology": "构建眼部蒙皮拓扑",
+    "Button Title": "按钮标题",
+    "Case-sensitive *, ? and [] pattern": "区分大小写的 *、? 和 [] 模式",
+    "Collection Rules": "集合规则",
+    "Color Sets": "颜色集",
+    "Compatibility": "兼容性",
+    "Configuration": "配置",
+    "Copy the active bone's Rigify type and all parameters to checked bones": (
+        "将活动骨骼的 Rigify 类型和全部参数复制到勾选的骨骼"
+    ),
+    "Drive Roll Bones": "驱动扭转骨",
+    "Effective Matches": "最终匹配项",
+    "Empty Row": "空行",
+    "Explicit Chain": "显式链",
+    "Export": "导出",
+    "Eye Forward": "眼睛朝向",
+    "Force Connected Chain": "强制连接链",
+    "Forearm Roll": "前臂扭转骨",
+    "Generate & Connect Rigify Rig": "生成并连接 Rigify 绑定",
+    "Generated Rigify Rig": "已生成的 Rigify 绑定",
+    "Hidden Collections": "隐藏的集合",
+    "Hide": "隐藏",
+    "Import": "导入",
+    "Infer the horizontal viewing direction from eyelid bones": (
+        "根据眼睑骨推断水平视线方向"
+    ),
+    "Loading Rigify parameters…": "正在加载 Rigify 参数…",
+    "Lower Eyelids": "下眼睑",
+    "Managed by a bone rule": "由骨骼规则管理",
+    "Match one complete bone name": "匹配一个完整骨骼名称",
+    "Mirror checked configurations, or the active configuration if none are checked": (
+        "镜像勾选的配置；没有勾选项时镜像活动配置"
+    ),
+    "Move Left": "左移",
+    "Move Right": "右移",
+    "Move checked configurations, or the active configuration if none are checked": (
+        "移动勾选的配置；没有勾选项时移动活动配置"
+    ),
+    "No bone rule": "没有骨骼规则",
+    "No collection": "没有集合",
+    "No configured bone": "没有已配置的骨骼",
+    "None": "无",
+    "Only chain roots receive the Rigify type": "仅链根节点会获得 Rigify 类型",
+    "Order": "顺序",
+    "Order in Row": "行内顺序",
+    "Parameters save automatically": "参数会自动保存",
+    "Point the temporary eye bone along negative X": "将临时眼球骨指向 X 负方向",
+    "Point the temporary eye bone along negative Y": "将临时眼球骨指向 Y 负方向",
+    "Point the temporary eye bone along positive X": "将临时眼球骨指向 X 正方向",
+    "Point the temporary eye bone along positive Y": "将临时眼球骨指向 Y 正方向",
+    "Re-Rigify": "Re-Rigify",
+    "Re-Rigify Metarig": "Re-Rigify 元绑定",
+    "Re-Rigify Source Armature": "Re-Rigify 源骨架",
+    "Remove only the Copy Transforms constraints created by Re-Rigify": (
+        "仅移除 Re-Rigify 创建的复制变换约束"
+    ),
     "Rigify Type": "Rigify 类型",
+    "Rig Type": "绑定类型",
+    "Rig UI Layout": "绑定界面布局",
+    "Rule ID": "规则 ID",
+    "Rule Parameters": "规则参数",
+    "Rule matches no bones": "规则未匹配任何骨骼",
+    "Select for Collection": "选择用于集合",
+    "Standard Colors Lock": "锁定标准颜色",
+    "Synthetic Eyelid Fallback": "合成眼睑回退",
+    "UI Row": "界面行",
+    "Upper Arm Roll": "上臂扭转骨",
+    "Upper Eyelids": "上眼睑",
+    "Visible After Generation": "生成后可见",
     "Parameters": "参数",
     "Match": "匹配",
     "Exact": "精确",
@@ -21,7 +116,41 @@ _ZH_HANS_DEFAULT = {
     "Select": "选中",
 }
 
-_ZH_HANS_OPERATOR = {}
+_ZH_HANS_OPERATOR = {
+    "Add Bone Collection Reference": "添加骨骼集合引用",
+    "Add Bone Matching Rule": "添加骨骼匹配规则",
+    "Add Collection Configuration": "添加集合配置",
+    "Add Color Set": "添加颜色集",
+    "Add Rigify Default Color Sets": "添加 Rigify 默认颜色集",
+    "Add Selected Bones": "添加选中骨骼",
+    "Add Selected Bones to Active Collection": "将选中骨骼添加到活动集合",
+    "Add Selected Bones to Explicit Chain": "将选中骨骼添加到显式链",
+    "Add Selected Viewport Bones": "添加视图中选中的骨骼",
+    "Copy Bone Settings to Checked": "将骨骼设置复制到勾选项",
+    "Duplicate Collection Configuration": "复制集合配置",
+    "Export Re-Rigify Configuration": "导出 Re-Rigify 配置",
+    "Generate Rigify Rig": "生成 Rigify 绑定",
+    "Import Re-Rigify Configuration": "导入 Re-Rigify 配置",
+    "Insert or Remove UI Row": "插入或移除界面行",
+    "Mirror Configuration to Opposite Side": "将配置镜像到另一侧",
+    "Move Bone Configuration": "移动骨骼配置",
+    "Move Bone Matching Rule": "移动骨骼匹配规则",
+    "Move Collection Within UI Row": "在界面行内移动集合",
+    "Move Collection in List": "在列表中移动集合",
+    "Move Collection to UI Row": "将集合移动到界面行",
+    "Move Explicit Chain Bone": "移动显式链骨骼",
+    "Remove Bone Collection Reference": "移除骨骼集合引用",
+    "Remove Bone Configuration": "移除骨骼配置",
+    "Remove Bone Matching Rule": "移除骨骼匹配规则",
+    "Remove Collection Configuration": "移除集合配置",
+    "Remove Color Set": "移除颜色集",
+    "Remove Explicit Chain Bone": "移除显式链骨骼",
+    "Remove Rigify Drive": "移除 Rigify 驱动",
+    "Select All Configured Bones": "选择所有已配置骨骼",
+    "Select Collection": "选择集合",
+    "Sync Bone Matching Rules": "同步骨骼匹配规则",
+    "Validate Configuration": "验证配置",
+}
 
 _ZH_HANS = {
     **{
