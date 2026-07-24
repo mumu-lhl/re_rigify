@@ -7,6 +7,13 @@ Re-Rigify stores reusable Rigify type, parameter, bone collection, and generated
 - Blender 4.2 or newer
 - The bundled Rigify add-on enabled
 
+## Languages
+
+Re-Rigify follows Blender's **Edit → Preferences → Interface → Language**
+setting. The add-on provides English and Simplified Chinese translations.
+Enable **Translation → Interface** for labels and **Tooltips** for
+descriptions. Blender 4.2–5.2 are supported.
+
 ## Use
 
 Install the extension archive, select an armature, and open **3D View → Sidebar → Re-Rigify**. Configure Rigify types for selected bones, define flat bone collections with exact or case-sensitive Glob rules, validate, then generate. The source armature is never converted in place.
