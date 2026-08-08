@@ -795,6 +795,7 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
                 and item.rigify_type
                 in {
                     "limbs.arm",
+                    "limbs.simple_tentacle",
                     "limbs.super_finger",
                     "spines.basic_tail",
                     "face.skin_eye",
@@ -814,6 +815,7 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
                             item, "forearm_roll_bone", obj.data, "bones"
                         )
                 if item.rigify_type in {
+                    "limbs.simple_tentacle",
                     "limbs.super_finger",
                     "spines.basic_tail",
                 }:

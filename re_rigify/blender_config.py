@@ -24,6 +24,7 @@ from .core import (
 _carrier_updates_suspended = 0
 _collection_rename_updates_suspended = 0
 FORCE_CONNECT_RIG_TYPES = frozenset((
+    "limbs.simple_tentacle",
     "limbs.super_finger",
     "spines.basic_tail",
 ))

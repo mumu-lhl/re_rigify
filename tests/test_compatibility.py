@@ -99,6 +99,23 @@ class ConnectedChainPlanningTests(unittest.TestCase):
             ("Thumb_02_R", "Thumb_03_R", True),
         ])
 
+    def test_simple_tentacle_force_connect_builds_chain(self):
+        parents = {
+            "EarPhysics": None,
+            "Ear_01_L": "EarPhysics",
+            "Ear_02_L": "Ear_01_L",
+            "Ear_03_L": "Ear_02_L",
+        }
+
+        result = plan_connected_chain(
+            "Ear_01_L", "limbs.simple_tentacle", parents, enabled=True,
+        )
+
+        self.assertEqual(result, [
+            ("Ear_01_L", "Ear_02_L", True),
+            ("Ear_02_L", "Ear_03_L", True),
+        ])
+
     def test_disabled_chain_returns_no_operations(self):
         parents = {"root": None, "child": "root"}
 

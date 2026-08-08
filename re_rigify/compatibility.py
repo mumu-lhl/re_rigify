@@ -12,6 +12,7 @@ from .translations import format_iface, iface_
 
 
 CHAIN_MIN_LENGTHS = {
+    "limbs.simple_tentacle": 2,
     "limbs.super_finger": 2,
     "spines.basic_tail": 2,
 }
