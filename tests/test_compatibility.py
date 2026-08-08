@@ -6,6 +6,7 @@ from re_rigify.compatibility import (
     build_compatibility_plan,
     plan_connected_chain,
     plan_eye_landmarks,
+    plan_super_finger_axis,
     resolve_compatibility_drive_map,
     validate_compatibility,
 )
@@ -18,6 +19,15 @@ class FakeBone:
         self.parent = parent
         self.head_local = head
         self.length = length
+
+
+class FakeFingerBone:
+    def __init__(self, name, head, tail, parent=None):
+        self.name = name
+        self.parent = parent
+        self.head_local = head
+        self.tail_local = tail
+        self.length = sum((b - a) ** 2 for a, b in zip(head, tail)) ** 0.5
 
 
 class FakeBones(list):
@@ -132,6 +142,66 @@ class ConnectedChainPlanningTests(unittest.TestCase):
                 {"Thumb_01_R": None},
                 enabled=True,
             )
+
+    def test_super_finger_axis_plan_detects_marker_tip(self):
+        root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
+        tip = FakeFingerBone("Index_03_L", (1, 0, 0), (1, 0, 2), root)
+        obj = FakeObject([root, tip])
+
+        result = plan_super_finger_axis(obj, {
+            "bone_name": "Index_01_L",
+            "rigify_type": "limbs.super_finger",
+            "chain_bones": ["Index_01_L", "Index_03_L"],
+            "parameters": {"primary_rotation_axis": "automatic"},
+        })
+
+        self.assertEqual(result.bone_names, ("Index_01_L", "Index_03_L"))
+
+    def test_super_finger_axis_plan_ignores_aligned_tip(self):
+        root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
+        tip = FakeFingerBone("Index_02_L", (1, 0, 0), (2, 0, 0), root)
+        obj = FakeObject([root, tip])
+
+        result = plan_super_finger_axis(obj, {
+            "bone_name": "Index_01_L",
+            "rigify_type": "limbs.super_finger",
+            "chain_bones": ["Index_01_L", "Index_02_L"],
+            "parameters": {"primary_rotation_axis": "automatic"},
+        })
+
+        self.assertIsNone(result)
+
+    def test_super_finger_axis_plan_respects_manual_axis(self):
+        root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
+        tip = FakeFingerBone("Index_03_L", (1, 0, 0), (1, 0, 2), root)
+        obj = FakeObject([root, tip])
+
+        result = plan_super_finger_axis(obj, {
+            "bone_name": "Index_01_L",
+            "rigify_type": "limbs.super_finger",
+            "chain_bones": ["Index_01_L", "Index_03_L"],
+            "parameters": {"primary_rotation_axis": "-X"},
+        })
+
+        self.assertIsNone(result)
+
+    def test_compatibility_plan_includes_super_finger_axis_fix(self):
+        root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
+        tip = FakeFingerBone("Index_03_L", (1, 0, 0), (1, 0, 2), root)
+        obj = FakeObject([root, tip])
+
+        result = build_compatibility_plan(obj, [{
+            "bone_name": "Index_01_L",
+            "rigify_type": "limbs.super_finger",
+            "chain_bones": ["Index_01_L", "Index_03_L"],
+            "parameters": {"primary_rotation_axis": "automatic"},
+            "compatibility": DEFAULT_COMPATIBILITY,
+        }])
+
+        self.assertEqual(
+            [plan.bone_names for plan in result.finger_axis_plans],
+            [("Index_01_L", "Index_03_L")],
+        )
 
     def test_force_connect_rejects_unsupported_type(self):
         with self.assertRaisesRegex(ConfigError, "does not support"):

@@ -22,6 +22,7 @@ CHAIN_MIN_LENGTHS = {
 class CompatibilityPlan:
     connections: list[tuple[str, str, bool]] = field(default_factory=list)
     eye_plans: list[object] = field(default_factory=list)
+    finger_axis_plans: list[object] = field(default_factory=list)
     roll_plans: list[object] = field(default_factory=list)
     source_to_helper: dict[str, str] = field(default_factory=dict)
 
@@ -49,6 +50,52 @@ class EyePlan:
     forward_axis: Point
     upper: list[EyeSegment]
     lower: list[EyeSegment]
+
+
+@dataclass(frozen=True)
+class FingerAxisPlan:
+    bone_names: tuple[str, ...]
+
+
+def plan_super_finger_axis(obj, config: dict) -> FingerAxisPlan | None:
+    """Detect a long, misaligned terminal marker in an automatic finger chain."""
+    if config.get("rigify_type") != "limbs.super_finger":
+        return None
+    if config.get("parameters", {}).get("primary_rotation_axis", "automatic") != "automatic":
+        return None
+
+    root = config["bone_name"]
+    parents = {
+        bone.name: bone.parent.name if bone.parent else None
+        for bone in obj.data.bones
+    }
+    chain = tuple(config.get("chain_bones") or unique_child_chain(root, parents))
+    if len(chain) < 2:
+        return None
+
+    first = obj.data.bones.get(chain[0])
+    last = obj.data.bones.get(chain[-1])
+    if first is None or last is None:
+        return None
+
+    chain_vector = tuple(
+        tail - head
+        for head, tail in zip(first.head_local, last.head_local)
+    )
+    tip_vector = tuple(
+        tail - head
+        for head, tail in zip(last.head_local, last.tail_local)
+    )
+    chain_length = sum(component * component for component in chain_vector) ** 0.5
+    tip_length = sum(component * component for component in tip_vector) ** 0.5
+    if chain_length == 0.0 or tip_length == 0.0:
+        return None
+
+    alignment = sum(a * b for a, b in zip(chain_vector, tip_vector))
+    alignment /= chain_length * tip_length
+    if alignment >= 0.5 or last.length < first.length * 1.5:
+        return None
+    return FingerAxisPlan(chain)
 
 
 def resolve_compatibility_drive_map(
@@ -324,6 +371,8 @@ def build_compatibility_plan(obj, bone_configs: list[dict]) -> CompatibilityPlan
             parents,
             enabled=compatibility.get("force_connect_chain", False),
         ))
+        if finger_axis_plan := plan_super_finger_axis(obj, config):
+            plan.finger_axis_plans.append(finger_axis_plan)
         plan.roll_plans.extend(plan_roll_bones(obj, config))
         if (
             config["rigify_type"] == "face.skin_eye"
@@ -416,7 +465,8 @@ def validate_compatibility(obj, bone_configs: list[dict]) -> tuple[str, ...]:
 
 def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
     if not plan.connections and not plan.eye_plans:
-        return dict(plan.source_to_helper)
+        if not plan.finger_axis_plans:
+            return dict(plan.source_to_helper)
     import bpy
     from mathutils import Vector
 
@@ -440,6 +490,30 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
                         plan.source_to_helper[segment.source_name] = helper.name
     finally:
         bpy.ops.object.mode_set(mode="OBJECT")
+
+    if plan.finger_axis_plans:
+        from rigify.utils.bones import align_chain_x_axis
+
+        bpy.ops.object.mode_set(mode="EDIT")
+        try:
+            for finger_plan in plan.finger_axis_plans:
+                tip = obj.data.edit_bones[finger_plan.bone_names[-1]]
+                previous = tip.parent
+                if previous is not None:
+                    direction = tip.head - previous.head
+                    if direction.length > 0.0:
+                        tip_length = tip.length
+                        tip.tail = tip.head + direction.normalized() * tip_length
+                align_chain_x_axis(obj, list(finger_plan.bone_names))
+        finally:
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+        for finger_plan in plan.finger_axis_plans:
+            parameters = obj.pose.bones[
+                finger_plan.bone_names[0]
+            ].rigify_parameters
+            if getattr(parameters, "primary_rotation_axis", "") == "automatic":
+                parameters.primary_rotation_axis = "X"
 
     for eye_plan in plan.eye_plans:
         eye_bone = obj.data.bones[eye_plan.eye_name]
