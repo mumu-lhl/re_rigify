@@ -55,6 +55,21 @@ class BoneRuleTests(unittest.TestCase):
         self.assertEqual(result["bone_rules"], [])
         self.assertTrue(result["collections"][0]["visible_after_generation"])
 
+    def test_non_chain_type_discards_stale_chain_options(self):
+        payload = self.valid_payload()
+        payload["bones"][0].update({
+            "rigify_type": "basic.super_copy",
+            "chain_bones": ["spine", "spine_tip"],
+            "compatibility": {
+                **DEFAULT_COMPATIBILITY,
+                "force_connect_chain": True,
+            },
+        })
+
+        result = normalize_config(payload)
+
+        self.assertEqual(result["bones"][0]["chain_bones"], [])
+
     def test_later_rule_wins_and_result_follows_bone_order(self):
         rules = [
             {

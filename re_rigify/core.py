@@ -620,6 +620,8 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             item.get("compatibility", {}),
             f"bones[{index}].compatibility",
         )
+        if rigify_type not in EXPLICIT_CHAIN_MIN_LENGTHS:
+            chain_bones = []
         normalized_bones.append({
             "bone_name": bone_name,
             "rigify_type": rigify_type,

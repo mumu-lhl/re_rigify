@@ -12,6 +12,7 @@ from bpy.props import (
 )
 
 from .core import (
+    EXPLICIT_CHAIN_MIN_LENGTHS,
     FORMAT_NAME,
     SCHEMA_VERSION,
     normalize_compatibility,
@@ -22,6 +23,10 @@ from .core import (
 
 _carrier_updates_suspended = 0
 _collection_rename_updates_suspended = 0
+FORCE_CONNECT_RIG_TYPES = frozenset((
+    "limbs.super_finger",
+    "spines.basic_tail",
+))
 
 
 @contextmanager
@@ -87,6 +92,11 @@ def _refresh_parameter_carrier(item, context):
     if not obj or obj.type != "ARMATURE" or obj.data != item.id_data:
         return
     settings = obj.data.re_rigify
+    if item.rigify_type not in EXPLICIT_CHAIN_MIN_LENGTHS:
+        item.chain_bones.clear()
+        item.active_chain_index = 0
+    if item.rigify_type not in FORCE_CONNECT_RIG_TYPES:
+        item.force_connect_chain = False
     index = next((index for index, candidate in enumerate(settings.bones) if candidate == item), -1)
     if index >= 0 and item.bone_name and item.bone_name in obj.data.bones:
         from .ui import prepare_parameter_carrier
