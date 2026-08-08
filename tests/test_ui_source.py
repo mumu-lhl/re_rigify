@@ -22,6 +22,22 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_main_panel_is_available_without_an_armature(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        main = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "RERIGIFY_PT_Main"
+        )
+        methods = {
+            node.name: node
+            for node in main.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        self.assertIn("poll", methods)
+        self.assertIn("return True", ast.unparse(methods["poll"]))
+        self.assertIn("Select an armature", ast.unparse(methods["draw"]))
+
     def test_bone_and_rule_parameters_use_distinct_carriers(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

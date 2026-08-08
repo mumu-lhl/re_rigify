@@ -561,9 +561,16 @@ class RERIGIFY_PT_Main(_RERIGIFY_PT_Base, bpy.types.Panel):
     bl_label = "Re-Rigify"
     bl_idname = "RERIGIFY_PT_main"
 
+    @classmethod
+    def poll(cls, context):
+        return True
+
     def draw(self, context):
         layout = self.layout
         obj = context.object
+        if obj is None or obj.type != "ARMATURE":
+            layout.label(text=iface_("Select an armature"), icon="ARMATURE_DATA")
+            return
         settings = obj.data.re_rigify
 
         summary = layout.row(align=True)
