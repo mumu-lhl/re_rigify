@@ -175,6 +175,19 @@ def cleanup_metarigs(source: bpy.types.Object, keep: bpy.types.Object | None = N
     return removed
 
 
+def cleanup_rigify_ui_scripts(rig: bpy.types.Object | None) -> int:
+    """Remove stale Rigify UI scripts belonging to a generated rig."""
+    if rig is None or rig.type != "ARMATURE":
+        return 0
+    script_name = f"{rig.name}_ui.py"
+    removed = 0
+    for text in list(bpy.data.texts):
+        if text.name == script_name or text.name.startswith(script_name + "."):
+            bpy.data.texts.remove(text)
+            removed += 1
+    return removed
+
+
 def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: dict) -> bpy.types.Object:
     previous_active = context.view_layer.objects.active
     previous_active_name = previous_active.name if previous_active else None
@@ -185,6 +198,10 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
     try:
         if context.object and context.object.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
+        previous_rig = source.re_rigify_generated_rig or bpy.data.objects.get(
+            f"{source.name}_rig"
+        )
+        cleanup_rigify_ui_scripts(previous_rig)
         duplicate = prepare_metarig(source)
         apply_collection_config(duplicate, payload["collections"])
         apply_bone_config(duplicate, payload["bones"])

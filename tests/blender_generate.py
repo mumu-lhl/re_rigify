@@ -32,6 +32,11 @@ try:
     }
 
     generated = generate_rig(bpy.context, source, payload)
+    script_prefix = f"{generated.name}_ui.py"
+    assert [
+        text.name for text in bpy.data.texts
+        if text.name == script_prefix or text.name.startswith(script_prefix + ".")
+    ] == [script_prefix]
     extra_metarig = source.copy()
     extra_metarig.data = source.data.copy()
     extra_metarig.name = "Source_metarig.999"
@@ -51,6 +56,11 @@ try:
     assert source.re_rigify_metarig is None
     assert extra_metarig_name not in bpy.data.objects
     assert bpy.data.objects.get("Source_metarig") is None
+    scripts = [
+        text.name for text in bpy.data.texts
+        if text.name == script_prefix or text.name.startswith(script_prefix + ".")
+    ]
+    assert scripts == [script_prefix]
 finally:
     if re_rigify.ui.HELPER_NAME in bpy.data.objects:
         re_rigify.ui.remove_parameter_carrier()
