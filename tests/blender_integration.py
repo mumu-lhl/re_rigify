@@ -367,14 +367,54 @@ try:
     finger_plan = build_compatibility_plan(finger_metarig, [{
         "bone_name": "Thumb_01_R",
         "rigify_type": "limbs.super_finger",
-        "compatibility": {**DEFAULT_COMPATIBILITY, "force_connect_chain": True},
+        "chain_bones": ["Thumb_01_R", "Thumb_02_R", "Thumb_03_R"],
+        "compatibility": {
+            **DEFAULT_COMPATIBILITY,
+            "force_connect_chain": True,
+            "super_finger_primary_axis": "+Z",
+        },
     }])
+    assert len(finger_plan.finger_axis_plans) == 1
+    assert finger_plan.finger_axis_plans[0].primary_rotation_axis == "Z"
+    assert not finger_plan.finger_axis_plans[0].fix_marker
     apply_compatibility_plan(finger_metarig, finger_plan)
+    assert (
+        finger_metarig.pose.bones["Thumb_01_R"].rigify_parameters.primary_rotation_axis
+        == "Z"
+    )
     assert finger_metarig.data.bones["Thumb_02_R"].use_connect
     assert finger_metarig.data.bones["Thumb_03_R"].use_connect
     assert not finger_source.data.bones["Thumb_02_R"].use_connect
     assert not finger_source.data.bones["Thumb_03_R"].use_connect
-    for temp in (finger_metarig, finger_source):
+
+    auto_metarig = finger_source.copy()
+    auto_metarig.data = finger_source.data.copy()
+    bpy.context.scene.collection.objects.link(auto_metarig)
+    select_only(bpy.context, auto_metarig)
+    bpy.ops.object.mode_set(mode="EDIT")
+    auto_metarig.data.edit_bones["Thumb_03_R"].tail = (2, 0, 3)
+    bpy.ops.object.mode_set(mode="OBJECT")
+    auto_plan = build_compatibility_plan(auto_metarig, [{
+        "bone_name": "Thumb_01_R",
+        "rigify_type": "limbs.super_finger",
+        "chain_bones": ["Thumb_01_R", "Thumb_02_R", "Thumb_03_R"],
+        "compatibility": {
+            **DEFAULT_COMPATIBILITY,
+            "force_connect_chain": True,
+            "super_finger_primary_axis": "AUTO",
+        },
+    }])
+    assert len(auto_plan.finger_axis_plans) == 1
+    assert auto_plan.finger_axis_plans[0].primary_rotation_axis == "automatic"
+    assert auto_plan.finger_axis_plans[0].fix_marker
+    apply_compatibility_plan(auto_metarig, auto_plan)
+    assert (
+        auto_metarig.pose.bones["Thumb_01_R"].rigify_parameters.primary_rotation_axis
+        == "automatic"
+    )
+    assert tuple(finger_source.data.bones["Thumb_03_R"].tail_local) == (0, 0, 3.5)
+
+    for temp in (finger_metarig, auto_metarig, finger_source):
         temp_data = temp.data
         bpy.data.objects.remove(temp, do_unlink=True)
         bpy.data.armatures.remove(temp_data)
