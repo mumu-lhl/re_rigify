@@ -29,9 +29,28 @@ try:
             "name": "Controls", "ui_title": "Controls", "ui_row": 1, "row_order": 0,
             "rules": [{"kind": "EXACT", "pattern": "root"}],
         }],
+        "root_color_set": "Root",
+        "color_sets": [{
+            "name": "Root",
+            "normal": [0.2, 0.8, 0.1],
+            "select": [0.9, 0.5, 0.1],
+            "active": [1.0, 0.0, 0.0],
+            "standard_colors_lock": False,
+        }],
     }
 
     generated = generate_rig(bpy.context, source, payload)
+    root_color = generated.pose.bones["root"].color
+    assert root_color.palette == "CUSTOM"
+    assert all(abs(actual - expected) < 0.01 for actual, expected in zip(
+        root_color.custom.normal, (0.2, 0.8, 0.1)
+    ))
+    assert all(abs(actual - expected) < 0.01 for actual, expected in zip(
+        root_color.custom.select, (0.9, 0.5, 0.1)
+    ))
+    assert all(abs(actual - expected) < 0.01 for actual, expected in zip(
+        root_color.custom.active, (1.0, 0.0, 0.0)
+    ))
     script_prefix = f"{generated.name}_ui.py"
     assert [
         text.name for text in bpy.data.texts

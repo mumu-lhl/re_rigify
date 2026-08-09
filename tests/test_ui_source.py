@@ -38,6 +38,15 @@ class PanelStructureTests(unittest.TestCase):
         self.assertIn("return True", ast.unparse(methods["poll"]))
         self.assertIn("Select an armature", ast.unparse(methods["draw"]))
 
+    def test_color_panel_exposes_root_color_set(self):
+        source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        panel = next(
+            node for node in tree.body
+            if isinstance(node, ast.ClassDef) and node.name == "RERIGIFY_PT_Colors"
+        )
+        self.assertIn("root_color_set_name", ast.unparse(panel))
+
     def test_bone_and_rule_parameters_use_distinct_carriers(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

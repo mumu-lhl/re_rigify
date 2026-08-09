@@ -1065,6 +1065,10 @@ class RERIGIFY_PT_Colors(_RERIGIFY_PT_Base, bpy.types.Panel):
         buttons.operator("re_rigify.color_set_add", text="", icon="ADD")
         buttons.operator("re_rigify.color_set_remove", text="", icon="REMOVE")
         layout.operator("re_rigify.color_set_add_defaults", icon="COLOR")
+        layout.prop_search(
+            settings, "root_color_set_name", settings, "color_sets",
+            text="Root Control",
+        )
         if settings.color_sets:
             color = settings.color_sets[settings.active_color_index]
             layout.use_property_split = True

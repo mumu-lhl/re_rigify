@@ -597,6 +597,9 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
     bone_rules = _require_type(payload.get("bone_rules", []), list, "bone_rules")
     collections = _require_type(payload.get("collections"), list, "collections")
     color_sets = _require_type(payload.get("color_sets", []), list, "color_sets")
+    root_color_set = _require_type(
+        payload.get("root_color_set", ""), str, "root_color_set",
+    )
     normalized_bones: list[dict[str, Any]] = []
     normalized_bone_rules: list[dict[str, Any]] = []
     normalized_collections: list[dict[str, Any]] = []
@@ -768,7 +771,7 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
             "standard_colors_lock": standard_colors_lock,
         })
 
-    return {
+    normalized = {
         "format": FORMAT_NAME,
         "schema_version": SCHEMA_VERSION,
         "bones": normalized_bones,
@@ -776,6 +779,9 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
         "collections": normalized_collections,
         "color_sets": normalized_color_sets,
     }
+    if "root_color_set" in payload:
+        normalized["root_color_set"] = root_color_set
+    return normalized
 
 
 def resolve_collection_rules(
@@ -871,6 +877,15 @@ def validate_config(
                 )
             )
         seen_color_sets.add(name)
+
+    root_color_set = config.get("root_color_set", "")
+    if root_color_set and root_color_set not in seen_color_sets:
+        errors.append(
+            format_iface(
+                "root control references unknown color set: {color_set!r}",
+                color_set=root_color_set,
+            )
+        )
 
     seen_rule_ids = set()
     for rule in config["bone_rules"]:

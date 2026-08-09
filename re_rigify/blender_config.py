@@ -226,6 +226,7 @@ class RERIGIFY_PG_ArmatureConfig(bpy.types.PropertyGroup):
     active_collection_index: IntProperty(default=0)
     color_sets: CollectionProperty(type=RERIGIFY_PG_ColorSet)
     active_color_index: IntProperty(default=0)
+    root_color_set_name: StringProperty(name="Root Control Color Set", default="")
     validation_message: StringProperty(default="")
 
 
@@ -307,6 +308,8 @@ def armature_to_payload(
             "select": list(item.select),
             "standard_colors_lock": item.standard_colors_lock,
         } for item in settings.color_sets],
+        **({"root_color_set": settings.root_color_set_name}
+           if settings.root_color_set_name else {}),
     }
 
 
@@ -322,6 +325,7 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
         settings.bone_rules.clear()
         settings.collections.clear()
         settings.color_sets.clear()
+        settings.root_color_set_name = payload.get("root_color_set", "")
         for source in payload["bones"]:
             item = settings.bones.add()
             item.bone_name = source["bone_name"]

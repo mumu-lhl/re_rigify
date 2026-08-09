@@ -97,6 +97,8 @@ _ZH_HANS_DEFAULT = {
     "Rig UI Layout": "绑定界面布局",
     "Rule ID": "规则 ID",
     "Rule Parameters": "规则参数",
+    "Root Control": "Root 控制器",
+    "Root Control Color Set": "Root 控制器颜色集",
     "Rule matches no bones": "规则未匹配任何骨骼",
     "Select for Collection": "选择用于集合",
     "Standard Colors Lock": "锁定标准颜色",
@@ -254,6 +256,9 @@ _ZH_HANS_DEFAULT = {
     "duplicate collection: {name!r}": "集合重复：{name!r}",
     "collection {name!r} references unknown color set: {color_set!r}": (
         "集合 {name!r} 引用了未知颜色集：{color_set!r}"
+    ),
+    "root control references unknown color set: {color_set!r}": (
+        "Root 控制器引用了未知颜色集：{color_set!r}"
     ),
     "duplicate row_order {order} in UI row {row}": (
         "界面行 {row} 中存在重复的 row_order {order}"

@@ -810,6 +810,26 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(any("unknown color set" in error for error in result.errors))
 
+    def test_root_color_set_must_exist(self):
+        payload = BoneRuleTests.valid_payload()
+        payload["root_color_set"] = "Missing"
+
+        result = validate_config(payload, ["spine"], ["basic.raw_copy"])
+
+        self.assertFalse(result.ok)
+
+        payload["root_color_set"] = "Root"
+        payload["color_sets"] = [{
+            "name": "Root",
+            "normal": [0.1, 0.2, 0.3],
+            "select": [0.4, 0.5, 0.6],
+            "active": [0.7, 0.8, 0.9],
+            "standard_colors_lock": False,
+        }]
+        result = validate_config(payload, ["spine"], ["basic.raw_copy"])
+        self.assertTrue(result.ok)
+        self.assertEqual(normalize_config(payload)["root_color_set"], "Root")
+
     def test_duplicate_color_set_is_rejected(self):
         color = {
             "name": "FK", "active": [1.0, 1.0, 1.0],

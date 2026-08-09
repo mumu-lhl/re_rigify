@@ -117,6 +117,28 @@ def apply_generated_collection_visibility(
             )
 
 
+def apply_generated_root_color(
+    rig: bpy.types.Object,
+    root_color_set: str,
+    color_sets: list[dict],
+) -> bool:
+    """Apply a configured color set to Rigify's generated root control."""
+    if not root_color_set:
+        return False
+    color = next(
+        (item for item in color_sets if item["name"] == root_color_set),
+        None,
+    )
+    root = rig.pose.bones.get("root")
+    if color is None or root is None:
+        return False
+    root.color.palette = "CUSTOM"
+    root.color.custom.normal = color["normal"]
+    root.color.custom.select = color["select"]
+    root.color.custom.active = color["active"]
+    return True
+
+
 def apply_color_config(obj: bpy.types.Object, color_sets: list[dict], collections: list[dict]) -> None:
     armature = obj.data
     armature.rigify_colors.clear()
@@ -228,6 +250,11 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
             result_obj = rigs[-1]
         apply_generated_collection_visibility(
             result_obj, payload["collections"],
+        )
+        apply_generated_root_color(
+            result_obj,
+            payload.get("root_color_set", ""),
+            payload.get("color_sets", []),
         )
         rotation_drive_map = apply_roll_helpers(
             context, source, result_obj, compatibility_plan.roll_plans,
