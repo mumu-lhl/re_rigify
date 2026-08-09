@@ -143,6 +143,19 @@ class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
         ),
         default="AUTO",
     )
+    super_finger_primary_axis: EnumProperty(
+        name="Primary Rotation Axis",
+        items=(
+            ("AUTO", "Automatic", "Use Rigify's native automatic axis selection"),
+            ("+X", "+X", "Use positive X as the primary rotation axis"),
+            ("-X", "-X", "Use negative X as the primary rotation axis"),
+            ("+Y", "+Y", "Use positive Y as the primary rotation axis"),
+            ("-Y", "-Y", "Use negative Y as the primary rotation axis"),
+            ("+Z", "+Z", "Use positive Z as the primary rotation axis"),
+            ("-Z", "-Z", "Use negative Z as the primary rotation axis"),
+        ),
+        default="AUTO",
+    )
     upper_lid_pattern: StringProperty(name="Upper Eyelids")
     lower_lid_pattern: StringProperty(name="Lower Eyelids")
     synthetic_lids_fallback: BoolProperty(name="Synthetic Eyelid Fallback", default=False)
@@ -252,6 +265,7 @@ def _compatibility_from_item(item) -> dict:
         "upper_lid_pattern": item.upper_lid_pattern,
         "lower_lid_pattern": item.lower_lid_pattern,
         "synthetic_lids_fallback": item.synthetic_lids_fallback,
+        "super_finger_primary_axis": item.super_finger_primary_axis,
     })
 
 

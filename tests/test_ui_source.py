@@ -22,6 +22,18 @@ class UIListTranslationTests(unittest.TestCase):
 
 
 class PanelStructureTests(unittest.TestCase):
+    def test_super_finger_compatibility_exposes_primary_axis(self):
+        config_source = Path("re_rigify/blender_config.py").read_text(encoding="utf-8")
+        ui_source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        self.assertIn("super_finger_primary_axis:", config_source)
+        self.assertIn('default="AUTO"', config_source)
+        for axis in ("AUTO", "+X", "-X", "+Y", "-Y", "+Z", "-Z"):
+            self.assertIn(f'("{axis}"', config_source)
+        self.assertIn(
+            'compatibility.prop(item, "super_finger_primary_axis")',
+            ui_source,
+        )
+
     def test_main_panel_is_available_without_an_armature(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

@@ -827,6 +827,8 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
                     "spines.basic_tail",
                 }:
                     compatibility.prop(item, "force_connect_chain")
+                if item.rigify_type == "limbs.super_finger":
+                    compatibility.prop(item, "super_finger_primary_axis")
                 if item.rigify_type == "face.skin_eye":
                     compatibility.prop(item, "skin_eye_compatibility")
                     if item.skin_eye_compatibility:

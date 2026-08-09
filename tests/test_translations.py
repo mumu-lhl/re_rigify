@@ -32,6 +32,20 @@ def literal_assignment(class_node, name):
 
 
 class TranslationCatalogTests(unittest.TestCase):
+    def test_super_finger_axis_ui_strings_are_translated(self):
+        catalog = translations.TRANSLATIONS["zh_HANS"]
+        for source in (
+            "Primary Rotation Axis",
+            "Use Rigify's native automatic axis selection",
+            "Use positive X as the primary rotation axis",
+            "Use negative X as the primary rotation axis",
+            "Use positive Y as the primary rotation axis",
+            "Use negative Y as the primary rotation axis",
+            "Use positive Z as the primary rotation axis",
+            "Use negative Z as the primary rotation axis",
+        ):
+            self.assertIn((translations.DEFAULT_CONTEXT, source), catalog)
+
     def test_simplified_chinese_locale_aliases_share_one_catalog(self):
         self.assertIs(
             translations.TRANSLATIONS["zh_HANS"],
