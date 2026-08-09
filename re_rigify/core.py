@@ -24,7 +24,12 @@ DEFAULT_COMPATIBILITY = {
     "upper_lid_pattern": "",
     "lower_lid_pattern": "",
     "synthetic_lids_fallback": False,
+    "super_finger_primary_axis": "AUTO",
 }
+
+SUPER_FINGER_PRIMARY_AXES = frozenset(
+    {"AUTO", "+X", "-X", "+Y", "-Y", "+Z", "-Z"}
+)
 
 EXPLICIT_CHAIN_MIN_LENGTHS = {
     "limbs.arm": 3,
@@ -164,6 +169,20 @@ def normalize_compatibility(value: object, path: str = "compatibility") -> dict[
                 )
             )
         result["eye_forward_axis"] = axis
+    if "super_finger_primary_axis" in value:
+        axis = _require_type(
+            value["super_finger_primary_axis"],
+            str,
+            f"{path}.super_finger_primary_axis",
+        )
+        if axis not in SUPER_FINGER_PRIMARY_AXES:
+            raise ConfigError(
+                format_iface(
+                    "{path} is invalid",
+                    path=f"{path}.super_finger_primary_axis",
+                )
+            )
+        result["super_finger_primary_axis"] = axis
     return result
 
 
@@ -177,6 +196,17 @@ def mirror_compatibility(value: dict[str, Any], name_mapper) -> dict[str, Any]:
         "+X": "-X",
         "-X": "+X",
     }.get(result["eye_forward_axis"], result["eye_forward_axis"])
+    result["super_finger_primary_axis"] = {
+        "+X": "-X",
+        "-X": "+X",
+        "+Y": "-Y",
+        "-Y": "+Y",
+        "+Z": "-Z",
+        "-Z": "+Z",
+    }.get(
+        result["super_finger_primary_axis"],
+        result["super_finger_primary_axis"],
+    )
     return result
 
 

@@ -12,6 +12,7 @@ from re_rigify.core import (
     mirror_compatibility,
     move_selected_indices,
     normalize_config,
+    normalize_compatibility,
     preview_bone_rule,
     mirror_parameter_value,
     rename_collection_references,
@@ -54,6 +55,25 @@ class BoneRuleTests(unittest.TestCase):
 
         self.assertEqual(result["bone_rules"], [])
         self.assertTrue(result["collections"][0]["visible_after_generation"])
+
+    def test_super_finger_axis_defaults_to_auto(self):
+        result = normalize_compatibility({})
+        self.assertEqual(result["super_finger_primary_axis"], "AUTO")
+
+    def test_super_finger_axis_rejects_unknown_value(self):
+        with self.assertRaisesRegex(ConfigError, "super_finger_primary_axis"):
+            normalize_compatibility({"super_finger_primary_axis": "Q"})
+
+    def test_mirror_compatibility_swaps_every_super_finger_axis(self):
+        expected = {
+            "AUTO": "AUTO", "+X": "-X", "-X": "+X",
+            "+Y": "-Y", "-Y": "+Y", "+Z": "-Z", "-Z": "+Z",
+        }
+        for source, target in expected.items():
+            result = mirror_compatibility(
+                {"super_finger_primary_axis": source}, lambda value: value,
+            )
+            self.assertEqual(result["super_finger_primary_axis"], target)
 
     def test_non_chain_type_discards_stale_chain_options(self):
         payload = self.valid_payload()
