@@ -156,6 +156,7 @@ class ConnectedChainPlanningTests(unittest.TestCase):
         })
 
         self.assertEqual(result.bone_names, ("Index_01_L", "Index_03_L"))
+        self.assertEqual(result.primary_rotation_axis, "-X")
 
     def test_super_finger_axis_plan_ignores_aligned_tip(self):
         root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))

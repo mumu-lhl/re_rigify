@@ -55,6 +55,7 @@ class EyePlan:
 @dataclass(frozen=True)
 class FingerAxisPlan:
     bone_names: tuple[str, ...]
+    primary_rotation_axis: str
 
 
 def plan_super_finger_axis(obj, config: dict) -> FingerAxisPlan | None:
@@ -95,7 +96,7 @@ def plan_super_finger_axis(obj, config: dict) -> FingerAxisPlan | None:
     alignment /= chain_length * tip_length
     if alignment >= 0.5 or last.length < first.length * 1.5:
         return None
-    return FingerAxisPlan(chain)
+    return FingerAxisPlan(chain, "-X")
 
 
 def resolve_compatibility_drive_map(
@@ -498,12 +499,15 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
         try:
             for finger_plan in plan.finger_axis_plans:
                 tip = obj.data.edit_bones[finger_plan.bone_names[-1]]
+                # The long terminal bone is a guide marker, not a real finger
+                # segment. Make it collinear with the preceding chain so
+                # Rigify's scale bend follows the finger instead of the
+                # marker's (often vertical) orientation.
                 previous = tip.parent
                 if previous is not None:
                     direction = tip.head - previous.head
                     if direction.length > 0.0:
-                        tip_length = tip.length
-                        tip.tail = tip.head + direction.normalized() * tip_length
+                        tip.tail = tip.head + direction.normalized() * tip.length
                 align_chain_x_axis(obj, list(finger_plan.bone_names))
         finally:
             bpy.ops.object.mode_set(mode="OBJECT")
@@ -513,7 +517,7 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
                 finger_plan.bone_names[0]
             ].rigify_parameters
             if getattr(parameters, "primary_rotation_axis", "") == "automatic":
-                parameters.primary_rotation_axis = "X"
+                parameters.primary_rotation_axis = finger_plan.primary_rotation_axis
 
     for eye_plan in plan.eye_plans:
         eye_bone = obj.data.bones[eye_plan.eye_name]
