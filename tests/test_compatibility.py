@@ -153,10 +153,59 @@ class ConnectedChainPlanningTests(unittest.TestCase):
             "rigify_type": "limbs.super_finger",
             "chain_bones": ["Index_01_L", "Index_03_L"],
             "parameters": {"primary_rotation_axis": "automatic"},
+            "compatibility": {"super_finger_primary_axis": "AUTO"},
         })
 
         self.assertEqual(result.bone_names, ("Index_01_L", "Index_03_L"))
-        self.assertEqual(result.primary_rotation_axis, "-X")
+        self.assertEqual(result.primary_rotation_axis, "automatic")
+        self.assertTrue(result.fix_marker)
+
+    def test_super_finger_axis_plan_does_not_infer_from_thumb_name(self):
+        for side in ("L", "R"):
+            root = FakeFingerBone(
+                f"Thumb_01_{side}", (0, 0, 0), (1, 0, 0),
+            )
+            tip = FakeFingerBone(
+                f"Thumb_03_{side}", (1, 0, 0), (1, 0, 2), root,
+            )
+            obj = FakeObject([root, tip])
+
+            result = plan_super_finger_axis(obj, {
+                "bone_name": root.name,
+                "rigify_type": "limbs.super_finger",
+                "chain_bones": [root.name, tip.name],
+                "parameters": {"primary_rotation_axis": "automatic"},
+                "compatibility": {"super_finger_primary_axis": "AUTO"},
+            })
+
+            self.assertEqual(result.primary_rotation_axis, "automatic")
+
+    def test_super_finger_axis_plan_uses_explicit_axis_independent_of_name(self):
+        for side, configured_axis, expected_axis in (
+            ("L", "+X", "X"),
+            ("R", "+Y", "Y"),
+            ("L", "+Z", "Z"),
+            ("R", "-Y", "-Y"),
+        ):
+            root = FakeFingerBone(
+                f"Thumb_01_{side}", (0, 0, 0), (1, 0, 0),
+            )
+            tip = FakeFingerBone(
+                f"Thumb_03_{side}", (1, 0, 0), (1, 0, 2), root,
+            )
+            obj = FakeObject([root, tip])
+
+            result = plan_super_finger_axis(obj, {
+                "bone_name": root.name,
+                "rigify_type": "limbs.super_finger",
+                "chain_bones": [root.name, tip.name],
+                "parameters": {"primary_rotation_axis": "automatic"},
+                "compatibility": {
+                    "super_finger_primary_axis": configured_axis,
+                },
+            })
+
+            self.assertEqual(result.primary_rotation_axis, expected_axis)
 
     def test_super_finger_axis_plan_ignores_aligned_tip(self):
         root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
@@ -168,23 +217,26 @@ class ConnectedChainPlanningTests(unittest.TestCase):
             "rigify_type": "limbs.super_finger",
             "chain_bones": ["Index_01_L", "Index_02_L"],
             "parameters": {"primary_rotation_axis": "automatic"},
+            "compatibility": {"super_finger_primary_axis": "AUTO"},
         })
 
         self.assertIsNone(result)
 
-    def test_super_finger_axis_plan_respects_manual_axis(self):
+    def test_super_finger_axis_plan_exists_for_explicit_axis_on_aligned_tip(self):
         root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
-        tip = FakeFingerBone("Index_03_L", (1, 0, 0), (1, 0, 2), root)
+        tip = FakeFingerBone("Index_02_L", (1, 0, 0), (2, 0, 0), root)
         obj = FakeObject([root, tip])
 
         result = plan_super_finger_axis(obj, {
             "bone_name": "Index_01_L",
             "rigify_type": "limbs.super_finger",
-            "chain_bones": ["Index_01_L", "Index_03_L"],
-            "parameters": {"primary_rotation_axis": "-X"},
+            "chain_bones": ["Index_01_L", "Index_02_L"],
+            "parameters": {"primary_rotation_axis": "automatic"},
+            "compatibility": {"super_finger_primary_axis": "-Y"},
         })
 
-        self.assertIsNone(result)
+        self.assertEqual(result.primary_rotation_axis, "-Y")
+        self.assertFalse(result.fix_marker)
 
     def test_compatibility_plan_includes_super_finger_axis_fix(self):
         root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
@@ -202,6 +254,10 @@ class ConnectedChainPlanningTests(unittest.TestCase):
         self.assertEqual(
             [plan.bone_names for plan in result.finger_axis_plans],
             [("Index_01_L", "Index_03_L")],
+        )
+        self.assertEqual(
+            result.finger_axis_plans[0].primary_rotation_axis,
+            "automatic",
         )
 
     def test_force_connect_rejects_unsupported_type(self):
