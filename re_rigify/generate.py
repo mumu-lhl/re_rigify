@@ -138,6 +138,48 @@ def apply_generated_root_color(
     root.color.custom.active = color["active"]
     return True
 
+def fix_generated_control_display(rig: bpy.types.Object) -> dict[str, int]:
+    """Correct display-only quirks on a freshly generated Rigify rig.
+
+    - Shoulder widgets bulge along the bone +Z axis. Mirrored MMD shoulders often
+      have -Z world-up on the right side, so the widget looks upside-down. Flip
+      custom-shape Z scale when the bone Z axis points downward.
+    - hips/chest control bones are intentionally Y-aligned by Rigify; do not
+      rewrite those rest orientations here (constraints depend on them).
+    """
+    if rig is None or rig.type != "ARMATURE":
+        return {"shoulders_flipped": 0}
+    flipped = 0
+    world_up = (0.0, 0.0, 1.0)
+    for pose_bone in rig.pose.bones:
+        shape = pose_bone.custom_shape
+        if shape is None:
+            continue
+        shape_name = shape.name.lower()
+        # Generated widgets are named like WGT-<rig>_肩.L; type is only known
+        # from the mesh/name convention used by Rigify shoulder widgets.
+        if "shoulder" not in shape_name and "肩" not in pose_bone.name:
+            # Only touch controls that still use the stock shoulder mesh bbox
+            # (y from 0..1, z from 0..+). Avoid flipping unrelated shapes.
+            if shape.type == "MESH" and shape.data and shape.data.vertices:
+                ys = [v.co.y for v in shape.data.vertices]
+                zs = [v.co.z for v in shape.data.vertices]
+                if not (min(ys) >= -1e-4 and max(ys) <= 1.0 + 1e-3 and min(zs) >= -1e-4):
+                    continue
+            else:
+                continue
+        bone = pose_bone.bone
+        z_axis = bone.matrix_local.to_3x3().col[2].normalized()
+        if z_axis.dot(world_up) >= 0.0:
+            continue
+        scale = list(pose_bone.custom_shape_scale_xyz)
+        if scale[2] > 0.0:
+            scale[2] = -scale[2]
+            pose_bone.custom_shape_scale_xyz = scale
+            flipped += 1
+    return {"shoulders_flipped": flipped}
+
+
 
 def apply_color_config(obj: bpy.types.Object, color_sets: list[dict], collections: list[dict]) -> None:
     armature = obj.data
@@ -312,6 +354,7 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
             payload.get("root_color_set", ""),
             payload.get("color_sets", []),
         )
+        fix_generated_control_display(result_obj)
         rotation_drive_map = apply_roll_helpers(
             context, source, result_obj, compatibility_plan.roll_plans,
         )
