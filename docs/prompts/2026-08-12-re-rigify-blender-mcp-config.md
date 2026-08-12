@@ -49,11 +49,12 @@
 - 日文名骨架：arm/leg 优先写显式链，不要依赖英文关键词推断。
 - 清空无效空链 `["","",""]`。
 - 肩部 `basic.super_copy` 必须设 `super_copy_widget_type: "shoulder"`。
+- 肩 `shoulder` 小部件沿骨骼 **+Z** 鼓起。MMD 镜像后 `肩.R` 的 Z 常朝下，控件会像上下颠倒。生成后 Re-Rigify 会对 Z 朝下的肩控件自动 `custom_shape_scale_xyz.z *= -1`（仅显示，不改绑定）。
 - `spines.basic_spine`：
   - `make_fk_controls: true`
   - `fk_coll_refs` → `Torso FK`，`tweak_coll_refs` → `Torso Tweak`
   - 短链（3 骨，如 腰/上半身/上半身2）设 `pivot_pos: 1`（hips 取自第 1 骨、chest 取自第 2 骨）
-- Rigify 的 `hips` 控件会 **沿 -Y 翻转**（`align_bone_to_axis(..., flip=True)`），这是官方设计，不是配置写反；不要为“纠正方向”去翻源骨。
+- Rigify 的 `hips` 控件 rest 会 **对齐到世界 +Y**（官方 `align_bone_to_axis(..., flip=True)` 后的结果）。这是控制骨设计，不是配置写反；**不要**为“纠正方向”去改 hips rest 或翻源骨。显示位置靠 `MCH-WGT-hips`。
 
 ### B. 骨骼集合（collections）——命名与归属
 
