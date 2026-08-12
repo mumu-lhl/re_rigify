@@ -55,7 +55,7 @@
 
 腿：`Leg.L` / `Leg.R` / `Leg FK.*` / `Leg Tweak.*`  
 躯干/头：`Root`、`Torso`、`Torso Tweak`、`Head`、`Head Tweak`  
-手指：`Fingers.L` / `Fingers.R`（可按需再拆 FK/Tweak）
+手指：`Fingers.L` / `Fingers.R`（主控）+ `Fingers Tweak.L` / `Fingers Tweak.R`（**必配**）
 
 IK 集合 rules：把该侧 IK 相关源骨 exact/glob 进去。  
 例：`Arm.L` ← 肩.L、腕.L、ひじ.L、手首.L（按实际骨名）。  
@@ -70,6 +70,10 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
   - `tweak_coll_refs: ["Arm Tweak.L"]` / R
   - `fk_layers_extra: true`，`tweak_layers_extra: true`
 - `limbs.leg`：同理 `Leg FK.*` / `Leg Tweak.*`
+- `limbs.super_finger`（每指根骨）：
+  - `tweak_coll_refs: ["Fingers Tweak.L"]` / R
+  - `tweak_layers_extra: true`
+  - Rigify `super_finger` 通过 `ControlLayersOption.TWEAK` 吃 tweak 集合；不要漏配
 - spine/head：按需 `tweak_coll_refs` → `Torso Tweak` / `Head Tweak`
 
 引用名必须与 collections 里 name **完全一致**。
@@ -85,7 +89,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 - FK 集合 → FK
 - Tweak 集合 → Tweak
 - Torso/Head 主控 → Special
-- Fingers → Extra
+- Fingers 主控 → Extra；Fingers Tweak → Tweak
 - `root_color_set = "Root"`
 
 ### E. 生成后可见性（Visible After Generation）
@@ -93,7 +97,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 **默认只启用 IK/主控类**，FK/Tweak 关闭：
 
 - visible=true：`Root`、`Torso`、`Head`、`Arm.L/R`、`Leg.L/R`、`Fingers.L/R`（及同类主控）
-- visible=false：所有 `* FK*`、`* Tweak*`
+- visible=false：所有 `* FK*`、`* Tweak*`（含 `Fingers Tweak.*`）
 
 ### F. 绑定界面 UI 排布（ui_row / row_order）——关键
 
@@ -112,7 +116,8 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 8:  Leg FK.L, Leg FK.R
 9:  Leg Tweak.L, Leg Tweak.R
 10: <empty>
-11: Fingers.L, Fingers.R
+11: Fingers.L, Fingers.R         # 手指主控一行
+12: Fingers Tweak.L, Fingers Tweak.R
 ```
 
 要求：
@@ -137,9 +142,10 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 
 - [ ] validate_active → 0 errors
 - [ ] 无空 chain、无错误 force_connect
-- [ ] Arm/Leg FK·Tweak coll_refs 指向真实集合
-- [ ] 生成后仅 IK/主控 visible；FK/Tweak hidden
-- [ ] UI：同类一行、Arm/Leg 上下分区、区间有空行
+- [ ] Arm/Leg/Finger 的 FK·Tweak coll_refs 指向真实集合
+- [ ] 每个 `limbs.super_finger` 都有对应侧 `Fingers Tweak.*` 的 `tweak_coll_refs`
+- [ ] 生成后仅 IK/主控 visible；FK/Tweak hidden（含 Fingers Tweak）
+- [ ] UI：同类一行、Arm/Leg/Fingers 上下分区、区间有空行
 - [ ] heel 可选：有则进链第 5 项，无则 4 项且不报错
 - [ ] 颜色集齐全且 collection.color_set 有效
 
@@ -148,6 +154,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 - 把 FK/Tweak 默认 visible=true
 - `Arm.L, Arm FK.L, Arm Tweak.L, Arm.R, ...` 全塞一行
 - 给 `limbs.arm`/`limbs.leg` 开 `force_connect_chain`
+- 配置了手指主控集合却不配 `Fingers Tweak.*` / 不写 `tweak_coll_refs`
 - leg 没有 heel 还硬报错/硬造 heel
 - 只改 Blender 骨架 collection、不写 re_rigify collections/payload
 - 生成并覆盖用户绑定前未校验
