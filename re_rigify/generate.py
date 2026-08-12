@@ -168,9 +168,57 @@ def duplicate_as_metarig(source: bpy.types.Object) -> bpy.types.Object:
     return duplicate
 
 
+def resolve_existing_target_rig(source: bpy.types.Object) -> bpy.types.Object | None:
+    """Return a reusable generated rig, or drop stale unlinked leftovers.
+
+    Users often delete the generated rig from the outliner/view layer while the
+    Object datablock remains. Rigify then fails with "not in view layer". Treat
+    unlinked leftovers as deleted so generation can create a fresh target.
+    """
+    candidates: list[bpy.types.Object] = []
+    linked = source.re_rigify_generated_rig
+    if linked is not None:
+        candidates.append(linked)
+    by_name = bpy.data.objects.get(f"{source.name}_rig")
+    if by_name is not None and by_name not in candidates:
+        candidates.append(by_name)
+
+    for target in candidates:
+        if target == source or target.type != "ARMATURE":
+            if source.re_rigify_generated_rig == target:
+                source.re_rigify_generated_rig = None
+            continue
+        if target.users_collection:
+            return target
+        # Unlinked leftover: clear pointer and remove if possible.
+        if source.re_rigify_generated_rig == target:
+            source.re_rigify_generated_rig = None
+        try:
+            bpy.data.objects.remove(target, do_unlink=True)
+        except RuntimeError:
+            pass
+    return None
+
+
+def ensure_object_in_source_collections(
+    obj: bpy.types.Object,
+    source: bpy.types.Object,
+) -> None:
+    """Link obj into the source's collections so the active view layer can see it."""
+    if obj.users_collection:
+        return
+    linked = False
+    for collection in source.users_collection:
+        if obj.name not in collection.objects:
+            collection.objects.link(obj)
+            linked = True
+    if not linked and obj.name not in bpy.context.scene.collection.objects:
+        bpy.context.scene.collection.objects.link(obj)
+
+
 def prepare_metarig(source: bpy.types.Object) -> bpy.types.Object:
     """Create a temporary metarig that targets the existing generated rig."""
-    target_rig = source.re_rigify_generated_rig or bpy.data.objects.get(f"{source.name}_rig")
+    target_rig = resolve_existing_target_rig(source)
     cleanup_metarigs(source)
     metarig = duplicate_as_metarig(source)
     source.re_rigify_metarig = metarig
@@ -178,8 +226,18 @@ def prepare_metarig(source: bpy.types.Object) -> bpy.types.Object:
     metarig.hide_viewport = False
     metarig.hide_select = False
     metarig.hide_set(False)
-    if target_rig and target_rig != source and target_rig.type == "ARMATURE":
-        metarig.data.rigify_target_rig = target_rig
+    if target_rig is not None:
+        ensure_object_in_source_collections(target_rig, source)
+        target_rig.hide_viewport = False
+        target_rig.hide_select = False
+        target_rig.hide_set(False)
+        # Final gate: Rigify must be able to select the target in this view layer.
+        if target_rig.name in bpy.context.view_layer.objects:
+            metarig.data.rigify_target_rig = target_rig
+        else:
+            if source.re_rigify_generated_rig == target_rig:
+                source.re_rigify_generated_rig = None
+            metarig.data.rigify_target_rig = None
     return metarig
 
 
@@ -220,9 +278,7 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
     try:
         if context.object and context.object.mode != "OBJECT":
             bpy.ops.object.mode_set(mode="OBJECT")
-        previous_rig = source.re_rigify_generated_rig or bpy.data.objects.get(
-            f"{source.name}_rig"
-        )
+        previous_rig = resolve_existing_target_rig(source)
         cleanup_rigify_ui_scripts(previous_rig)
         duplicate = prepare_metarig(source)
         apply_collection_config(duplicate, payload["collections"])

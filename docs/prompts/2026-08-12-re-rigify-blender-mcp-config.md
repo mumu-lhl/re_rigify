@@ -29,11 +29,11 @@
 
 | 部位 | 典型 rigify_type | 备注 |
 |------|------------------|------|
-| 肩 | `basic.super_copy` | 左右 |
+| 肩 | `basic.super_copy` | 左右；**`super_copy_widget_type = "shoulder"`**（不要用默认 circle） |
 | 上臂根 | `limbs.arm` | 显式链：上臂→肘/小臂→腕/手（≥3） |
 | 大腿根 | `limbs.leg` | 显式链：大腿→膝→脚→脚趾；**heel 可选** |
 | 手指根 | `limbs.super_finger` | 每指完整链；`force_connect_chain=True`（仅 finger/tentacle/tail 支持） |
-| 脊柱根 | `spines.basic_spine` | 显式链 ≥3 |
+| 脊柱根 | `spines.basic_spine` | 显式链 ≥3；配 **Torso FK** + Torso Tweak；MMD 三骨链常用 `pivot_pos=1` |
 | 脖子根 | `spines.super_head` | 显式链：颈→头 |
 
 规则：
@@ -44,6 +44,12 @@
 - `force_connect_chain` 只能给支持类型（`limbs.super_finger` / `limbs.simple_tentacle` / `spines.basic_tail`）。arm/leg/spine/head **不要**开 force_connect。
 - 日文名骨架：arm/leg 优先写显式链，不要依赖英文关键词推断。
 - 清空无效空链 `["","",""]`。
+- 肩部 `basic.super_copy` 必须设 `super_copy_widget_type: "shoulder"`。
+- `spines.basic_spine`：
+  - `make_fk_controls: true`
+  - `fk_coll_refs` → `Torso FK`，`tweak_coll_refs` → `Torso Tweak`
+  - 短链（3 骨，如 腰/上半身/上半身2）设 `pivot_pos: 1`（hips 取自第 1 骨、chest 取自第 2 骨）
+- Rigify 的 `hips` 控件会 **沿 -Y 翻转**（`align_bone_to_axis(..., flip=True)`），这是官方设计，不是配置写反；不要为“纠正方向”去翻源骨。
 
 ### B. 骨骼集合（collections）——命名与归属
 
@@ -54,7 +60,7 @@
 - Tweak：`Arm Tweak.L` / `Arm Tweak.R`
 
 腿：`Leg.L` / `Leg.R` / `Leg FK.*` / `Leg Tweak.*`  
-躯干/头：`Root`、`Torso`、`Torso Tweak`、`Head`、`Head Tweak`  
+躯干/头：`Root`、`Torso`、`Torso FK`、`Torso Tweak`、`Head`、`Head Tweak`  
 手指：`Fingers.L` / `Fingers.R`（主控）+ `Fingers Tweak.L` / `Fingers Tweak.R`（**必配**）
 
 IK 集合 rules：把该侧 IK 相关源骨 exact/glob 进去。  
@@ -74,7 +80,11 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
   - `tweak_coll_refs: ["Fingers Tweak.L"]` / R
   - `tweak_layers_extra: true`
   - Rigify `super_finger` 通过 `ControlLayersOption.TWEAK` 吃 tweak 集合；不要漏配
-- spine/head：按需 `tweak_coll_refs` → `Torso Tweak` / `Head Tweak`
+- `spines.basic_spine`：
+  - `fk_coll_refs: ["Torso FK"]`，`fk_layers_extra: true`
+  - `tweak_coll_refs: ["Torso Tweak"]`，`tweak_layers_extra: true`
+  - `make_fk_controls: true`，短链 `pivot_pos: 1`
+- `spines.super_head`：`tweak_coll_refs` → `Head Tweak`
 
 引用名必须与 collections 里 name **完全一致**。
 
@@ -97,7 +107,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 **默认只启用 IK/主控类**，FK/Tweak 关闭：
 
 - visible=true：`Root`、`Torso`、`Head`、`Arm.L/R`、`Leg.L/R`、`Fingers.L/R`（及同类主控）
-- visible=false：所有 `* FK*`、`* Tweak*`（含 `Fingers Tweak.*`）
+- visible=false：所有 `* FK*`、`* Tweak*`（含 `Torso FK`、`Fingers Tweak.*`）
 
 ### F. 绑定界面 UI 排布（ui_row / row_order）——关键
 
@@ -106,7 +116,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 推荐行号（中间空行用“无 collection 占用该 row”实现）：
 
 ```
-1:  Root, Torso, Torso Tweak, Head, Head Tweak
+1:  Root, Torso, Torso FK, Torso Tweak, Head, Head Tweak
 2:  <empty>
 3:  Arm.L, Arm.R                 # IK 一行
 4:  Arm FK.L, Arm FK.R           # FK 一行
@@ -134,30 +144,38 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 2. 组装完整 schema v1 payload（format=`re-rigify`）。
 3. `payload_to_armature` 一次写入（避免半残状态）。
 4. `validate_active`；errors 必须清空。
-5. 打印摘要：collections（row/order/color/visible）、bones（type/chain/fk/tweak/force）、validation errors。
+5. 打印摘要：collections（row/order/color/visible）、bones（type/chain/fk/tweak/force/widget）、validation errors。
 6. 若拓扑/显式链能力不足（如旧版不支持 leg chain），先最小修复插件代码 + 单测，reload 后再写配置。
-7. 不保存 blend。
+7. 生成前检查 `source.re_rigify_generated_rig` / `<source>_rig`：若物体已不在任何 collection / 不在当前 view layer，视为已删除，清空指针并移除残留 datablock，再生成（避免 Rigify “不在视图层中, 所以无法选中”）。
+8. 不保存 blend。
 
 ## 验收清单
 
 - [ ] validate_active → 0 errors
 - [ ] 无空 chain、无错误 force_connect
+- [ ] 肩 `super_copy_widget_type == "shoulder"`
+- [ ] `spines.basic_spine` 有 `Torso FK` + `Torso Tweak` coll_refs，`make_fk_controls=true`
 - [ ] Arm/Leg/Finger 的 FK·Tweak coll_refs 指向真实集合
 - [ ] 每个 `limbs.super_finger` 都有对应侧 `Fingers Tweak.*` 的 `tweak_coll_refs`
-- [ ] 生成后仅 IK/主控 visible；FK/Tweak hidden（含 Fingers Tweak）
+- [ ] 生成后仅 IK/主控 visible；FK/Tweak hidden（含 Torso FK / Fingers Tweak）
 - [ ] UI：同类一行、Arm/Leg/Fingers 上下分区、区间有空行
 - [ ] heel 可选：有则进链第 5 项，无则 4 项且不报错
 - [ ] 颜色集齐全且 collection.color_set 有效
+- [ ] 删除旧生成骨架后可再次 Generate（无 view-layer 选中错误）
 
 ## 反例（禁止）
 
 - 把 FK/Tweak 默认 visible=true
 - `Arm.L, Arm FK.L, Arm Tweak.L, Arm.R, ...` 全塞一行
 - 给 `limbs.arm`/`limbs.leg` 开 `force_connect_chain`
+- 肩部 widget 仍用 `circle` / 空
+- `spines.basic_spine` 只配 Tweak 不配 `Torso FK`
 - 配置了手指主控集合却不配 `Fingers Tweak.*` / 不写 `tweak_coll_refs`
+- 因 Rigify `hips` 官方 -Y 翻转而错误改源骨骼方向
 - leg 没有 heel 还硬报错/硬造 heel
 - 只改 Blender 骨架 collection、不写 re_rigify collections/payload
 - 生成并覆盖用户绑定前未校验
+- 残留未 link 的 `<source>_rig` 仍当作 target 传给 Rigify
 
 ## 可选输出
 
