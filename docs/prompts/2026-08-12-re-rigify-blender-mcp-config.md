@@ -31,7 +31,7 @@
 |------|------------------|------|
 | 肩 | `basic.super_copy` | 左右；**`super_copy_widget_type = "shoulder"`**（不要用默认 circle） |
 | 上臂根 | `limbs.arm` | 显式链：上臂→肘/小臂→腕/手（≥3） |
-| 大腿根 | `limbs.leg` | 显式链：大腿→膝→脚→脚趾；**heel 可选** |
+| 大腿根 | `limbs.leg` | 显式链：大腿→膝→脚→脚趾；**若场景有 heel/Extra 必须作为第 5 项**（Rigify 生成强制要 heel） |
 | 手指根 | `limbs.super_finger` | 每指完整链；`force_connect_chain=True`（仅 finger/tentacle/tail 支持） |
 | 脊柱根 | `spines.basic_spine` | 显式链 ≥3；配 **Torso FK** + Torso Tweak；MMD 三骨链常用 `pivot_pos=1` |
 | 脖子根 | `spines.super_head` | 显式链：颈→头 |
@@ -39,8 +39,12 @@
 规则：
 
 - 显式链 `chain_bones[0]` 必须等于配置骨名。
-- `limbs.leg`：主链 4 根全连接；若有第 5 根 heel，挂到 foot 且 **不连接**。
-- **没有 heel 就不要编造**，4 根即可。
+- `limbs.leg`：
+  - 主链 4 根全连接：大腿→膝→脚→脚趾。
+  - **Rigify 官方 `limbs.leg` 生成时强制要求 heel**（`Heel bone not found`）。Re-Rigify 校验可以不写 heel，但 **Generate 会失败**。
+  - heel 发现规则（Rigify）：**脚骨（链第 3 根）的未连接、无子级子骨**。
+  - 若源骨架里 heel/Extra 挂在脚趾下（MMD 常见），必须把 `Extra.L/R` 写进显式链第 5 项，让拓扑把它 **改挂到脚下且 use_connect=False**；从链里删掉 Extra 后 Generate 必炸。
+  - 真没有独立 heel 骨时，不要用 `limbs.leg`，或先加一根脚底 marker 再配。
 - `force_connect_chain` 只能给支持类型（`limbs.super_finger` / `limbs.simple_tentacle` / `spines.basic_tail`）。arm/leg/spine/head **不要**开 force_connect。
 - 日文名骨架：arm/leg 优先写显式链，不要依赖英文关键词推断。
 - 清空无效空链 `["","",""]`。
@@ -161,7 +165,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 - [ ] UI：同类一行、Arm/Leg/Fingers 上下分区、区间有空行
 - [ ] heel 可选：有则进链第 5 项，无则 4 项且不报错
 - [ ] 颜色集齐全且 collection.color_set 有效
-- [ ] 删除旧生成骨架后可再次 Generate（无 view-layer 选中错误）
+- [ ] `limbs.leg`：有 heel/Extra 则链长 5 且第 5 项为 heel；Generate 不报 `Heel bone not found`
 
 ## 反例（禁止）
 
@@ -174,7 +178,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 - 因 Rigify `hips` 官方 -Y 翻转而错误改源骨骼方向
 - leg 没有 heel 还硬报错/硬造 heel
 - 只改 Blender 骨架 collection、不写 re_rigify collections/payload
-- 生成并覆盖用户绑定前未校验
+- 把 MMD `Extra` heel 从 `limbs.leg` 显式链删掉还指望 Generate 成功
 - 残留未 link 的 `<source>_rig` 仍当作 target 传给 Rigify
 
 ## 可选输出
