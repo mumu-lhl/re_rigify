@@ -47,7 +47,7 @@ _ZH_HANS_DEFAULT = {
     "Generate and connect the Rigify rig immediately after applying the preset": (
         "应用预设后立即生成并连接 Rigify 绑定"
     ),
-    "MMD JP": "MMD 日文",
+    "MMD": "MMD",
     "Preset": "预设",
     "Preset applied, but generation was blocked by validation errors": (
         "预设已应用，但验证错误阻止了生成"
@@ -56,7 +56,7 @@ _ZH_HANS_DEFAULT = {
     "Replace the armature Re-Rigify configuration with a built-in preset": (
         "用内置预设替换当前骨架的 Re-Rigify 配置"
     ),
-    "Standard Japanese MMD armature names": "标准日文 MMD 骨架名称",
+    "Standard MMD armature names": "标准 MMD 骨架名称",
     "Unknown built-in preset: {preset_id}": "未知内置预设：{preset_id}",
     "Bone": "骨骼",
     "Bone Collections": "骨骼集合",

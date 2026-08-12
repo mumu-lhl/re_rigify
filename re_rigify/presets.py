@@ -291,8 +291,8 @@ def build_mmd_jp_payload() -> dict:
 
 PRESET_BUILDERS = {
     "mmd_jp": {
-        "name": "MMD JP",
-        "description": "Standard Japanese MMD armature names",
+        "name": "MMD",
+        "description": "Standard MMD armature names",
         "build": build_mmd_jp_payload,
     },
 }

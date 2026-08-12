@@ -1023,7 +1023,7 @@ class BuiltInPresetTests(unittest.TestCase):
 
         self.assertEqual(
             list_presets(),
-            [("mmd_jp", "MMD JP", "Standard Japanese MMD armature names")],
+            [("mmd_jp", "MMD", "Standard MMD armature names")],
         )
         payload = build_preset_payload("mmd_jp")
         bone_names = {
