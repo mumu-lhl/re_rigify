@@ -163,9 +163,9 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 - [ ] 每个 `limbs.super_finger` 都有对应侧 `Fingers Tweak.*` 的 `tweak_coll_refs`
 - [ ] 生成后仅 IK/主控 visible；FK/Tweak hidden（含 Torso FK / Fingers Tweak）
 - [ ] UI：同类一行、Arm/Leg/Fingers 上下分区、区间有空行
-- [ ] heel 可选：有则进链第 5 项，无则 4 项且不报错
-- [ ] 颜色集齐全且 collection.color_set 有效
 - [ ] `limbs.leg`：有 heel/Extra 则链长 5 且第 5 项为 heel；Generate 不报 `Heel bone not found`
+- [ ] 颜色集齐全且 collection.color_set 有效
+- [ ] 删除旧生成骨架后可再次 Generate（无 view-layer 选中错误）
 
 ## 反例（禁止）
 
@@ -176,7 +176,7 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 - `spines.basic_spine` 只配 Tweak 不配 `Torso FK`
 - 配置了手指主控集合却不配 `Fingers Tweak.*` / 不写 `tweak_coll_refs`
 - 因 Rigify `hips` 官方 -Y 翻转而错误改源骨骼方向
-- leg 没有 heel 还硬报错/硬造 heel
+- 把 MMD `Extra` heel 从 `limbs.leg` 显式链删掉还指望 Generate 成功
 - 只改 Blender 骨架 collection、不写 re_rigify collections/payload
 - 把 MMD `Extra` heel 从 `limbs.leg` 显式链删掉还指望 Generate 成功
 - 残留未 link 的 `<source>_rig` 仍当作 target 传给 Rigify
