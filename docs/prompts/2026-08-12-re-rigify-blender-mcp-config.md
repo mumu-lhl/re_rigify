@@ -19,7 +19,7 @@
 2. 列出全部骨骼名、parent 层级、现有 bone collections。
 3. 导出当前 `re_rigify` payload：bones / collections / color_sets / bone_rules / validation_message。
 4. 识别左右侧命名：`.L/.R`、`_L/_R`、日文 MMD（肩/腕/ひじ/手首/足/ひざ/足首/つま先 等）。
-5. 识别角色结构：root/center、spine、head、arm、leg、fingers、可选 heel/extra。
+5. 识别角色结构：root/center、spine、head、arm、leg、fingers、heel/Extra（`limbs.leg` 生成需要）。
 
 ## 配置目标（必须满足）
 
@@ -173,12 +173,11 @@ FK/Tweak 集合通常 **rules 为空**，靠 bone 参数里的 coll_refs 在生�
 - `Arm.L, Arm FK.L, Arm Tweak.L, Arm.R, ...` 全塞一行
 - 给 `limbs.arm`/`limbs.leg` 开 `force_connect_chain`
 - 肩部 widget 仍用 `circle` / 空
-- `spines.basic_spine` 只配 Tweak 不配 `Torso FK`
 - 配置了手指主控集合却不配 `Fingers Tweak.*` / 不写 `tweak_coll_refs`
 - 因 Rigify `hips` 官方 -Y 翻转而错误改源骨骼方向
 - 把 MMD `Extra` heel 从 `limbs.leg` 显式链删掉还指望 Generate 成功
 - 只改 Blender 骨架 collection、不写 re_rigify collections/payload
-- 把 MMD `Extra` heel 从 `limbs.leg` 显式链删掉还指望 Generate 成功
+- 生成并覆盖用户绑定前未校验
 - 残留未 link 的 `<source>_rig` 仍当作 target 传给 Rigify
 
 ## 可选输出
