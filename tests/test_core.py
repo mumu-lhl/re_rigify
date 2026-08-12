@@ -714,6 +714,111 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertIn(("Ankle_offset_L", "Toe_L", True), operations)
         self.assertIn(("Ankle_offset_L", "Ankle_L", False), operations)
 
+
+    def test_infers_japanese_mmd_arm_leg_spine_and_head_topology(self):
+        parents = {
+            "腰": None,
+            "上半身": "腰",
+            "上半身2": "上半身",
+            "下半身": "腰",
+            "首": "上半身2",
+            "頭": "首",
+            "腕.L": None,
+            "ひじ.L": "腕.L",
+            "手首.L": "ひじ.L",
+            "足.L": None,
+            "ひざ.L": "足.L",
+            "足首.L": "ひざ.L",
+            "つま先.L": "足首.L",
+            "Extra.L": "つま先.L",
+        }
+        configs = [
+            {"bone_name": "腰", "rigify_type": "spines.basic_spine"},
+            {"bone_name": "首", "rigify_type": "spines.super_head"},
+            {"bone_name": "腕.L", "rigify_type": "limbs.arm"},
+            {"bone_name": "足.L", "rigify_type": "limbs.leg"},
+        ]
+
+        operations = infer_rigify_topology(configs, parents)
+
+        self.assertIn(("腰", "上半身", True), operations)
+        self.assertIn(("上半身", "上半身2", True), operations)
+        self.assertIn(("上半身2", "首", False), operations)
+        self.assertIn(("首", "頭", True), operations)
+        self.assertIn(("腕.L", "ひじ.L", True), operations)
+        self.assertIn(("ひじ.L", "手首.L", True), operations)
+        self.assertIn(("足.L", "ひざ.L", True), operations)
+        self.assertIn(("ひざ.L", "足首.L", True), operations)
+        self.assertIn(("足首.L", "つま先.L", True), operations)
+        self.assertIn(("足首.L", "Extra.L", False), operations)
+
+    def test_explicit_leg_chain_connects_main_and_parents_heel(self):
+        parents = {
+            "Thigh_L": None,
+            "Knee_L": "Thigh_L",
+            "Foot_L": "Knee_L",
+            "Toe_L": "Foot_L",
+            "Heel_L": "Toe_L",
+        }
+        configs = [{
+            "bone_name": "Thigh_L",
+            "rigify_type": "limbs.leg",
+            "chain_bones": ["Thigh_L", "Knee_L", "Foot_L", "Toe_L", "Heel_L"],
+        }]
+
+        operations = infer_rigify_topology(configs, parents)
+
+        self.assertEqual(operations, [
+            ("Thigh_L", "Knee_L", True),
+            ("Knee_L", "Foot_L", True),
+            ("Foot_L", "Toe_L", True),
+            ("Foot_L", "Heel_L", False),
+        ])
+        self.assertEqual(EXPLICIT_CHAIN_MIN_LENGTHS["limbs.leg"], 4)
+
+    def test_explicit_leg_chain_omits_heel_when_not_listed(self):
+        parents = {
+            "足.L": None,
+            "ひざ.L": "足.L",
+            "足首.L": "ひざ.L",
+            "つま先.L": "足首.L",
+            "Extra.L": "つま先.L",
+        }
+        configs = [{
+            "bone_name": "足.L",
+            "rigify_type": "limbs.leg",
+            "chain_bones": ["足.L", "ひざ.L", "足首.L", "つま先.L"],
+        }]
+
+        operations = infer_rigify_topology(configs, parents)
+
+        self.assertEqual(operations, [
+            ("足.L", "ひざ.L", True),
+            ("ひざ.L", "足首.L", True),
+            ("足首.L", "つま先.L", True),
+        ])
+
+    def test_inferred_leg_topology_allows_missing_heel(self):
+        parents = {
+            "Thigh_L": None,
+            "Knee_L": "Thigh_L",
+            "Foot_L": "Knee_L",
+            "Toe_L": "Foot_L",
+        }
+
+        operations = infer_rigify_topology(
+            [{"bone_name": "Thigh_L", "rigify_type": "limbs.leg"}],
+            parents,
+        )
+
+        self.assertEqual(operations, [
+            ("Thigh_L", "Knee_L", True),
+            ("Knee_L", "Foot_L", True),
+            ("Foot_L", "Toe_L", True),
+        ])
+
+
+
     def test_explicit_spine_chain_overrides_source_parenting(self):
         parents = {
             "Position": None,

@@ -33,6 +33,7 @@ SUPER_FINGER_PRIMARY_AXES = frozenset(
 
 EXPLICIT_CHAIN_MIN_LENGTHS = {
     "limbs.arm": 3,
+    "limbs.leg": 4,
     "limbs.super_finger": 2,
     "limbs.spline_tentacle": 2,
     "spines.basic_spine": 3,
@@ -507,16 +508,28 @@ def infer_rigify_topology(
     for config in bone_configs:
         root = config["bone_name"]
         rig_type = config["rigify_type"]
-        explicit_chain = config.get("chain_bones", [])
+        explicit_chain = list(config.get("chain_bones", []))
         if explicit_chain:
-            operations.extend(
-                (parent, child, True)
-                for parent, child in zip(explicit_chain, explicit_chain[1:])
-            )
+            if rig_type == "limbs.leg":
+                # Rigify leg: thigh→knee→foot→toe connected; optional heel
+                # under foot, unconnected. Explicit chains do not invent a heel.
+                main_chain = explicit_chain[:4]
+                operations.extend(
+                    (parent, child, True)
+                    for parent, child in zip(main_chain, main_chain[1:])
+                )
+                if len(explicit_chain) >= 5:
+                    foot = explicit_chain[2]
+                    operations.append((foot, explicit_chain[4], False))
+            else:
+                operations.extend(
+                    (parent, child, True)
+                    for parent, child in zip(explicit_chain, explicit_chain[1:])
+                )
             continue
         if rig_type == "limbs.arm":
-            lower = find(root, ("elbow", "forearm", "lower_arm"))
-            hand = find(lower, ("wrist", "hand")) if lower else None
+            lower = find(root, ("elbow", "forearm", "lower_arm", "ひじ"))
+            hand = find(lower, ("wrist", "hand", "手首")) if lower else None
             if not lower or not hand:
                 raise ConfigError(
                     format_iface(
@@ -528,29 +541,39 @@ def infer_rigify_topology(
                 )
             operations.extend(((root, lower, True), (lower, hand, True)))
         elif rig_type == "limbs.leg":
-            knee = find(root, ("knee", "shin", "lower_leg"))
-            foot = find(knee, ("ankle_offset", "foot", "ankle")) if knee else None
-            toe = find(foot, ("toe",)) if foot else None
-            heel = find(knee, ("heel",), exclude={foot, toe} if foot and toe else set()) if knee else None
-            if heel is None and knee:
-                heel = next(
-                    (name for name in descendants(knee)
-                     if name not in {foot, toe} and "ankle" in normalized(name)
-                     and "offset" not in normalized(name)),
-                    None,
-                )
-            if not knee or not foot or not toe or not heel:
+            knee = find(root, ("knee", "shin", "lower_leg", "ひざ"))
+            foot = (
+                find(knee, ("ankle_offset", "foot", "ankle", "足首"))
+                if knee else None
+            )
+            toe = find(foot, ("toe", "つま先")) if foot else None
+            heel = None
+            if knee and foot and toe:
+                heel = find(knee, ("heel", "extra"), exclude={foot, toe})
+                if heel is None:
+                    heel = next(
+                        (
+                            name for name in descendants(knee)
+                            if name not in {foot, toe}
+                            and "ankle" in normalized(name)
+                            and "offset" not in normalized(name)
+                        ),
+                        None,
+                    )
+            if not knee or not foot or not toe:
                 raise ConfigError(
                     format_iface(
                         "{root!r} ({rigify_type}) requires thigh, knee/shin, "
-                        "foot, toe, and heel bones",
+                        "foot, and toe bones",
                         root=root,
                         rigify_type=rig_type,
                     )
                 )
             operations.extend(
-                ((root, knee, True), (knee, foot, True), (foot, toe, True), (foot, heel, False))
+                ((root, knee, True), (knee, foot, True), (foot, toe, True))
             )
+            if heel is not None:
+                operations.append((foot, heel, False))
         elif rig_type == "spines.basic_spine":
             chain = [root]
             current = root
@@ -558,7 +581,10 @@ def infer_rigify_topology(
                 direct = children.get(current, [])
                 preferred = [
                     name for name in direct
-                    if any(key in normalized(name) for key in ("spine", "chest", "torso"))
+                    if any(
+                        key in normalized(name)
+                        for key in ("spine", "chest", "torso", "上半身")
+                    )
                 ]
                 if len(preferred) == 1:
                     current = preferred[0]
@@ -578,7 +604,7 @@ def infer_rigify_topology(
                 )
             operations.extend((parent, child, True) for parent, child in zip(chain, chain[1:]))
         elif rig_type == "spines.super_head":
-            head = find(root, ("head",))
+            head = find(root, ("head", "頭"))
             if not head:
                 raise ConfigError(
                     format_iface(

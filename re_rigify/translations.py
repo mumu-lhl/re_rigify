@@ -221,8 +221,8 @@ _ZH_HANS_DEFAULT = {
     "{root!r} ({rigify_type}) requires an upper-arm, forearm/elbow, and hand/wrist chain": (
         "{root!r}（{rigify_type}）需要上臂、前臂/肘部和手/腕部链"
     ),
-    "{root!r} ({rigify_type}) requires thigh, knee/shin, foot, toe, and heel bones": (
-        "{root!r}（{rigify_type}）需要大腿、膝/小腿、脚、脚趾和脚跟骨骼"
+    "{root!r} ({rigify_type}) requires thigh, knee/shin, foot, and toe bones": (
+        "{root!r}（{rigify_type}）需要大腿、膝/小腿、脚和脚趾骨骼"
     ),
     "{root!r} ({rigify_type}) requires a chain of at least 3 bones": (
         "{root!r}（{rigify_type}）需要至少 3 个骨骼的链"
