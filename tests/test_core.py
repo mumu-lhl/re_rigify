@@ -1017,5 +1017,92 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(len(result.errors), 2)
 
 
+class BuiltInPresetTests(unittest.TestCase):
+    def test_mmd_jp_preset_is_valid_for_standard_bone_set(self):
+        from re_rigify.presets import build_preset_payload, list_presets
+
+        self.assertEqual(
+            list_presets(),
+            [("mmd_jp", "MMD JP", "Standard Japanese MMD armature names")],
+        )
+        payload = build_preset_payload("mmd_jp")
+        bone_names = {
+            "全ての親", "センター", "グルーブ", "腰", "下半身", "上半身", "上半身2",
+            "首", "頭",
+            "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
+            "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
+            "つま先.L", "つま先.R", "Extra.L", "Extra.R",
+        }
+        for side in ("L", "R"):
+            for root, a, b in (
+                ("親指０", "親指１", "親指２"),
+                ("人指１", "人指２", "人指３"),
+                ("中指１", "中指２", "中指３"),
+                ("薬指１", "薬指２", "薬指３"),
+                ("小指１", "小指２", "小指３"),
+            ):
+                bone_names.update({f"{root}.{side}", f"{a}.{side}", f"{b}.{side}"})
+
+        result = validate_config(
+            payload,
+            sorted(bone_names),
+            {
+                "basic.super_copy",
+                "limbs.arm",
+                "limbs.leg",
+                "limbs.super_finger",
+                "spines.basic_spine",
+                "spines.super_head",
+            },
+        )
+        self.assertTrue(result.ok, result.errors)
+
+        by_name = {item["bone_name"]: item for item in payload["bones"]}
+        self.assertEqual(
+            by_name["肩.L"]["parameters"]["super_copy_widget_type"],
+            "shoulder",
+        )
+        self.assertEqual(
+            by_name["腕.L"]["parameters"]["fk_coll_refs"],
+            ["Arm FK.L"],
+        )
+        self.assertEqual(
+            by_name["足.L"]["chain_bones"],
+            ["足.L", "ひざ.L", "足首.L", "つま先.L", "Extra.L"],
+        )
+        self.assertEqual(
+            by_name["腰"]["parameters"]["fk_coll_refs"],
+            ["Torso FK"],
+        )
+        self.assertEqual(by_name["腰"]["parameters"]["pivot_pos"], 1)
+        self.assertTrue(
+            by_name["人指１.L"]["compatibility"]["force_connect_chain"]
+        )
+
+        rows = {}
+        for collection in payload["collections"]:
+            rows.setdefault(collection["ui_row"], []).append(collection["name"])
+        self.assertEqual(rows[3], ["Arm.L", "Arm.R"])
+        self.assertEqual(rows[4], ["Arm FK.L", "Arm FK.R"])
+        self.assertEqual(rows[5], ["Arm Tweak.L", "Arm Tweak.R"])
+        self.assertNotIn(2, rows)
+        self.assertNotIn(6, rows)
+        self.assertNotIn(10, rows)
+        visible = {
+            item["name"]
+            for item in payload["collections"]
+            if item["visible_after_generation"]
+        }
+        self.assertIn("Arm.L", visible)
+        self.assertNotIn("Arm FK.L", visible)
+        self.assertNotIn("Fingers Tweak.L", visible)
+
+    def test_unknown_preset_is_rejected(self):
+        from re_rigify.presets import build_preset_payload
+
+        with self.assertRaisesRegex(ConfigError, "Unknown built-in preset"):
+            build_preset_payload("nope")
+
+
 if __name__ == "__main__":
     unittest.main()

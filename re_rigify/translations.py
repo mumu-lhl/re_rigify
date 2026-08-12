@@ -33,6 +33,31 @@ _ZH_HANS_DEFAULT = {
     "All": "全部",
     "Apply as Chain and Force Connect": "作为链应用并强制连接",
     "Automatic": "自动",
+    "Apply": "应用",
+    "Apply & Generate": "应用并生成",
+    "Apply Built-in Preset": "应用内置预设",
+    "Applied built-in preset {preset}": "已应用内置预设 {preset}",
+    "Applied preset and generated rig ({mapped} driven, {unmatched} unmatched)": (
+        "已应用预设并生成绑定（驱动 {mapped}，未匹配 {unmatched}）"
+    ),
+    "Built-in Preset": "内置预设",
+    "Built-in Re-Rigify configuration preset": "Re-Rigify 内置配置预设",
+    "Built-in preset applied": "已应用内置预设",
+    "Generate After Apply": "应用后生成",
+    "Generate and connect the Rigify rig immediately after applying the preset": (
+        "应用预设后立即生成并连接 Rigify 绑定"
+    ),
+    "MMD JP": "MMD 日文",
+    "Preset": "预设",
+    "Preset applied, but generation was blocked by validation errors": (
+        "预设已应用，但验证错误阻止了生成"
+    ),
+    "Preset rejected with {count} error(s)": "预设被拒绝，共 {count} 个错误",
+    "Replace the armature Re-Rigify configuration with a built-in preset": (
+        "用内置预设替换当前骨架的 Re-Rigify 配置"
+    ),
+    "Standard Japanese MMD armature names": "标准日文 MMD 骨架名称",
+    "Unknown built-in preset: {preset_id}": "未知内置预设：{preset_id}",
     "Bone": "骨骼",
     "Bone Collections": "骨骼集合",
     "Bone Matching Rules": "骨骼匹配规则",
@@ -354,6 +379,7 @@ _ZH_HANS_OPERATOR = {
     "Copy Bone Settings to Checked": "将骨骼设置复制到勾选项",
     "Duplicate Collection Configuration": "复制集合配置",
     "Export Re-Rigify Configuration": "导出 Re-Rigify 配置",
+    "Apply Built-in Preset": "应用内置预设",
     "Generate Rigify Rig": "生成 Rigify 绑定",
     "Import Re-Rigify Configuration": "导入 Re-Rigify 配置",
     "Insert or Remove UI Row": "插入或移除界面行",

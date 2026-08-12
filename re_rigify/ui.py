@@ -590,6 +590,22 @@ class RERIGIFY_PT_Main(_RERIGIFY_PT_Base, bpy.types.Panel):
             icon="GROUP_BONE",
             translate=False,
         )
+
+        preset_box = layout.box()
+        preset_box.label(text="Built-in Preset", icon="PRESET")
+        row = preset_box.row(align=True)
+        row.prop(context.window_manager, "re_rigify_preset", text="")
+        op = row.operator("re_rigify.apply_preset", text="Apply", icon="CHECKMARK")
+        op.preset = context.window_manager.re_rigify_preset
+        op.generate = False
+        op = preset_box.operator(
+            "re_rigify.apply_preset",
+            text="Apply & Generate",
+            icon="ARMATURE_DATA",
+        )
+        op.preset = context.window_manager.re_rigify_preset
+        op.generate = True
+
         layout.operator(
             "re_rigify.generate", text="Generate & Connect Rigify Rig", icon="ARMATURE_DATA"
         )
@@ -1119,6 +1135,13 @@ CLASSES = (
 
 
 def register():
+    from .presets import preset_enum_items
+
+    bpy.types.WindowManager.re_rigify_preset = bpy.props.EnumProperty(
+        name="Built-in Preset",
+        description="Built-in Re-Rigify configuration preset",
+        items=preset_enum_items,
+    )
     for cls in CLASSES:
         bpy.utils.register_class(cls)
     if _save_pre not in bpy.app.handlers.save_pre:
@@ -1134,3 +1157,5 @@ def unregister():
     remove_parameter_carrier()
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
+    if hasattr(bpy.types.WindowManager, "re_rigify_preset"):
+        del bpy.types.WindowManager.re_rigify_preset

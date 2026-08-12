@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 import bpy
-from bpy.props import BoolProperty, IntProperty, StringProperty
+from bpy.props import BoolProperty, EnumProperty, IntProperty, StringProperty
 from bpy_extras.io_utils import ExportHelper, ImportHelper
 
 from .blender_config import (
@@ -34,6 +34,7 @@ from .generate import generate_rig, validate_bone_parameters
 from .compatibility import validate_compatibility
 from .drive import connect_source_to_rig, remove_drive_constraints
 from .rigify_adapter import available_rig_types, is_rigify_enabled
+from .presets import build_preset_payload, preset_enum_items
 from .translations import format_iface, iface_
 
 
@@ -1133,6 +1134,129 @@ class RERIGIFY_OT_Import(bpy.types.Operator, ImportHelper):
         return {"FINISHED"}
 
 
+def _apply_preset_payload(context, obj, preset_id: str):
+    """Validate and write a built-in preset onto the active armature."""
+    from .rules import armature_rule_topology
+    from .ui import flush_parameter_carrier, remove_parameter_carrier
+
+    flush_parameter_carrier()
+    remove_parameter_carrier()
+    payload = build_preset_payload(preset_id)
+    parents, aligned_edges = armature_rule_topology(obj.data)
+    resolved = materialize_bone_rules(
+        payload,
+        obj.data.bones.keys(),
+        parents,
+        aligned_edges,
+    )
+    result = validate_config(
+        payload,
+        obj.data.bones.keys(),
+        available_rig_types(),
+        parents,
+        aligned_edges,
+    )
+    errors = list(result.errors)
+    if not errors:
+        errors.extend(validate_compatibility(obj, resolved["bones"]))
+    if not errors:
+        errors.extend(
+            validate_bone_parameters(
+                context, obj, resolved["bones"], resolved["collections"],
+            )
+        )
+    if errors:
+        obj.data.re_rigify.validation_message = "\n".join(errors)
+        raise ConfigError(
+            format_iface(
+                "Preset rejected with {count} error(s)",
+                count=len(errors),
+            )
+        )
+    payload_to_armature(obj.data, payload)
+    obj.data.re_rigify.validation_message = iface_("Built-in preset applied")
+    return payload
+
+
+class RERIGIFY_OT_ApplyPreset(bpy.types.Operator):
+    bl_idname = "re_rigify.apply_preset"
+    bl_label = "Apply Built-in Preset"
+    bl_description = "Replace the armature Re-Rigify configuration with a built-in preset"
+    bl_options = {"UNDO"}
+
+    preset: EnumProperty(
+        name="Preset",
+        items=preset_enum_items,
+    )
+    generate: BoolProperty(
+        name="Generate After Apply",
+        description="Generate and connect the Rigify rig immediately after applying the preset",
+        default=False,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.object
+        return obj is not None and obj.type == "ARMATURE"
+
+    def execute(self, context):
+        obj = active_armature(context)
+        if obj is None:
+            self.report({"ERROR"}, iface_("Select an armature"))
+            return {"CANCELLED"}
+        try:
+            _apply_preset_payload(context, obj, self.preset)
+        except ConfigError as exc:
+            self.report({"ERROR"}, str(exc))
+            return {"CANCELLED"}
+
+        if not self.generate:
+            self.report(
+                {"INFO"},
+                format_iface(
+                    "Applied built-in preset {preset}",
+                    preset=self.preset,
+                ),
+            )
+            return {"FINISHED"}
+
+        obj, errors = validate_active(context)
+        if errors:
+            obj.data.re_rigify.validation_message = "\n".join(errors)
+            self.report(
+                {"ERROR"},
+                iface_("Preset applied, but generation was blocked by validation errors"),
+            )
+            return {"CANCELLED"}
+        try:
+            generated = generate_rig(
+                context,
+                obj,
+                synchronized_payload(obj, include_managed=True),
+            )
+            mapped, unmatched = connect_source_to_rig(obj, generated)
+        except Exception as exc:
+            self.report(
+                {"ERROR"},
+                format_iface(
+                    "Rigify generation failed: {error}",
+                    error=exc,
+                ),
+            )
+            return {"CANCELLED"}
+        select_only(context, generated)
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Applied preset and generated rig ({mapped} driven, {unmatched} unmatched)",
+                mapped=mapped,
+                unmatched=len(unmatched),
+            ),
+        )
+        return {"FINISHED"}
+
+
+
 class RERIGIFY_OT_Generate(bpy.types.Operator):
     bl_idname = "re_rigify.generate"
     bl_label = "Generate Rigify Rig"
@@ -1225,6 +1349,7 @@ CLASSES = (
     RERIGIFY_OT_CollectionAddViewportBones,
     RERIGIFY_OT_RuleAdd, RERIGIFY_OT_RuleRemove,
     RERIGIFY_OT_Validate, RERIGIFY_OT_Export, RERIGIFY_OT_Import,
+    RERIGIFY_OT_ApplyPreset,
     RERIGIFY_OT_Generate, RERIGIFY_OT_RemoveDrive,
 )
 

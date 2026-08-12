@@ -50,6 +50,18 @@ class PanelStructureTests(unittest.TestCase):
         self.assertIn("return True", ast.unparse(methods["poll"]))
         self.assertIn("Select an armature", ast.unparse(methods["draw"]))
 
+    def test_main_panel_exposes_builtin_preset_controls(self):
+        ui_source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
+        self.assertIn("Built-in Preset", ui_source)
+        self.assertIn('re_rigify.apply_preset', ui_source)
+        self.assertIn("Apply & Generate", ui_source)
+        self.assertIn("re_rigify_preset", ui_source)
+        self.assertIn('bl_idname = "re_rigify.apply_preset"', operator_source)
+        self.assertIn("RERIGIFY_OT_ApplyPreset", operator_source)
+        self.assertTrue(Path("re_rigify/presets.py").exists())
+
+
     def test_color_panel_exposes_root_color_set(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         tree = ast.parse(source)

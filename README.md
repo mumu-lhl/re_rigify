@@ -16,7 +16,7 @@ descriptions. Blender 4.2–5.2 are supported.
 
 ## Use
 
-Install the extension archive, select an armature, and open **3D View → Sidebar → Re-Rigify**. Configure Rigify types for selected bones, define flat bone collections with exact or case-sensitive Glob rules, validate, then generate. The source armature is never converted in place.
+Install the extension archive, select an armature, and open **3D View → Sidebar → Re-Rigify**. For a standard Japanese MMD armature, choose the built-in **MMD JP** preset and click **Apply** or **Apply & Generate**. Otherwise configure Rigify types for selected bones, define flat bone collections with exact or case-sensitive Glob rules, validate, then generate. The source armature is never converted in place.
 
 Bone fields search every bone in the active armature. In Pose or Edit Mode Blender also shows its native bone eyedropper. Rigify parameters load and save automatically through an isolated helper; the source pose bones are not modified. `__ReRigify_Parameter_Carrier__` is created only on demand, flushed into `parameters_json`, and removed before saving, so it is not required in a saved project.
 
