@@ -133,23 +133,64 @@ def choose_drive_spec(
     target = choose_drive_target(source_bone_name, names, transform_explicit)
     return (target, "TRANSFORM") if target is not None else None
 
+def _bones_reachable_from_root(
+    root: str,
+    operations: Iterable[tuple[str, str, bool]],
+) -> set[str]:
+    """Follow parent→child topology ops from root only (never upward)."""
+    children: dict[str, list[str]] = {}
+    for parent, child, _connected in operations:
+        children.setdefault(parent, []).append(child)
+    found = {root}
+    queue = [root]
+    while queue:
+        current = queue.pop(0)
+        for child in children.get(current, ()):
+            if child not in found:
+                found.add(child)
+                queue.append(child)
+    return found
+
+
 def configured_drive_bone_names(
     bone_configs: Iterable[dict[str, Any]],
+    parents: dict[str, str | None] | None = None,
 ) -> set[str]:
-    """Source bones covered by Re-Rigify bone configs / explicit chains.
+    """Source bones that should receive post-generate drive constraints.
 
-    Collection membership alone does not count: only configured roots and
-    their chain members should receive post-generate drive constraints.
+    Coverage is:
+    - configured roots
+    - explicit chain members
+    - when *parents* is provided and a chain type has no explicit chain, the
+      same bones ``infer_rigify_topology`` would wire for generation
+      (``limbs.arm`` / ``limbs.leg`` / spine / head, etc.)
+
+    Collection membership alone does not count. Topology expansion only walks
+    parent→child ops from the root, so ``spines.super_head`` does not pull in
+    the neck's parent.
     """
     names: set[str] = set()
     for config in bone_configs:
         root = config.get("bone_name")
-        if isinstance(root, str) and root:
-            names.add(root)
-        for chain_bone in config.get("chain_bones") or ():
-            if isinstance(chain_bone, str) and chain_bone:
-                names.add(chain_bone)
+        if not isinstance(root, str) or not root:
+            continue
+        names.add(root)
+        explicit_chain = [
+            bone for bone in (config.get("chain_bones") or ())
+            if isinstance(bone, str) and bone
+        ]
+        names.update(explicit_chain)
+        if explicit_chain or parents is None:
+            continue
+        if root not in parents:
+            continue
+        try:
+            operations = infer_rigify_topology([config], parents)
+        except ConfigError:
+            continue
+        names.update(_bones_reachable_from_root(root, operations))
     return names
+
 
 
 

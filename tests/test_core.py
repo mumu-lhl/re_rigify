@@ -719,6 +719,65 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(names, {"腰", "上半身", "上半身2"})
         self.assertNotIn("センター", names)
 
+    def test_configured_drive_bones_expand_inferred_arm_chain(self):
+        parents = {
+            "腕.L": None,
+            "ひじ.L": "腕.L",
+            "手首.L": "ひじ.L",
+            "袖.L": "ひじ.L",
+        }
+        names = configured_drive_bone_names(
+            [{
+                "bone_name": "腕.L",
+                "rigify_type": "limbs.arm",
+                "chain_bones": [],
+            }],
+            parents,
+        )
+        self.assertEqual(names, {"腕.L", "ひじ.L", "手首.L"})
+        self.assertNotIn("袖.L", names)
+
+    def test_configured_drive_bones_expand_inferred_leg_spine_head(self):
+        parents = {
+            "腰": None,
+            "上半身": "腰",
+            "上半身2": "上半身",
+            "首": "上半身2",
+            "頭": "首",
+            "足.L": None,
+            "ひざ.L": "足.L",
+            "足首.L": "ひざ.L",
+            "つま先.L": "足首.L",
+            "Extra.L": "足首.L",
+        }
+        names = configured_drive_bone_names(
+            [
+                {"bone_name": "腰", "rigify_type": "spines.basic_spine", "chain_bones": []},
+                {"bone_name": "首", "rigify_type": "spines.super_head", "chain_bones": []},
+                {"bone_name": "足.L", "rigify_type": "limbs.leg", "chain_bones": []},
+            ],
+            parents,
+        )
+        self.assertEqual(
+            names,
+            {
+                "腰", "上半身", "上半身2",
+                "首", "頭",
+                "足.L", "ひざ.L", "足首.L", "つま先.L", "Extra.L",
+            },
+        )
+        # super_head may reparent under chest for Rigify, but chest is not driven by head.
+        self.assertNotIn("下半身", names)
+
+    def test_configured_drive_bones_keep_explicit_chain_without_parents(self):
+        names = configured_drive_bone_names([{
+            "bone_name": "Arm_L",
+            "rigify_type": "limbs.arm",
+            "chain_bones": ["Arm_L", "Elbow_L", "Wrist_L"],
+        }])
+        self.assertEqual(names, {"Arm_L", "Elbow_L", "Wrist_L"})
+
+
 
     def test_infers_common_disconnected_arm_leg_spine_and_head_topology(self):
         parents = {

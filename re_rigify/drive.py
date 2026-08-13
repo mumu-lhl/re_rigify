@@ -221,7 +221,7 @@ def _configured_source_drive_bones(source: bpy.types.Object) -> set[str] | None:
         parents,
         aligned_edges,
     )
-    return configured_drive_bone_names(resolved["bones"])
+    return configured_drive_bone_names(resolved["bones"], parents)
 
 def _chain_rule_bone_names(source: bpy.types.Object) -> set[str]:
     from .rules import armature_rule_topology, rule_dicts
