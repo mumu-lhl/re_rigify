@@ -214,9 +214,11 @@ try:
             "HairB_00", "HairB_01", "HairB_02",
         )
     )
-    assert (
-        chain_rig.data.bones[f"{DRIVER_BONE_PREFIX}Head"].inherit_scale
-        == "FULL"
+    # Unconfigured bones (e.g. Head) must not receive drive helpers/constraints.
+    assert f"{DRIVER_BONE_PREFIX}Head" not in chain_rig.data.bones
+    assert not any(
+        constraint.name.startswith("Re-Rigify Drive")
+        for constraint in chain_source.pose.bones["Head"].constraints
     )
     remove_drive_constraints(chain_source)
     chain_rig_data = chain_rig.data
@@ -500,8 +502,12 @@ try:
     source_bind_matrix = source.pose.bones["spine"].matrix.copy()
     mapped, unmatched = connect_source_to_rig(source, duplicate)
     bpy.context.view_layer.update()
-    assert mapped == len(source.pose.bones)
-    assert unmatched == []
+    assert mapped == 2
+    assert unmatched == ["upper_arm.R"]
+    assert not any(
+        constraint.name.startswith("Re-Rigify Drive")
+        for constraint in source.pose.bones["upper_arm.R"].constraints
+    )
     assert not source.data.bones["upper_arm.L"].use_connect
     assert max(
         abs(source.pose.bones["spine"].matrix[row][column] - source_bind_matrix[row][column])

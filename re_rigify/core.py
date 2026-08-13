@@ -133,6 +133,25 @@ def choose_drive_spec(
     target = choose_drive_target(source_bone_name, names, transform_explicit)
     return (target, "TRANSFORM") if target is not None else None
 
+def configured_drive_bone_names(
+    bone_configs: Iterable[dict[str, Any]],
+) -> set[str]:
+    """Source bones covered by Re-Rigify bone configs / explicit chains.
+
+    Collection membership alone does not count: only configured roots and
+    their chain members should receive post-generate drive constraints.
+    """
+    names: set[str] = set()
+    for config in bone_configs:
+        root = config.get("bone_name")
+        if isinstance(root, str) and root:
+            names.add(root)
+        for chain_bone in config.get("chain_bones") or ():
+            if isinstance(chain_bone, str) and chain_bone:
+                names.add(chain_bone)
+    return names
+
+
 
 def mirror_parameter_value(value: Any, name_mapper) -> Any:
     """Recursively mirror bone-name strings inside Rigify parameter values."""

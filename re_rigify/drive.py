@@ -6,7 +6,12 @@ import json
 
 import bpy
 
-from .core import choose_drive_spec, resolve_bone_rule_rows
+from .core import (
+    choose_drive_spec,
+    configured_drive_bone_names,
+    materialize_bone_rules,
+    resolve_bone_rule_rows,
+)
 from .translations import format_iface, iface_
 
 
@@ -192,6 +197,32 @@ def remove_drive_helpers(rig: bpy.types.Object | None) -> int:
     return removed
 
 
+
+def _configured_source_drive_bones(source: bpy.types.Object) -> set[str] | None:
+    """Return configured drive coverage, or None when no Re-Rigify config exists.
+
+    None preserves legacy full-armature bridging for unconfigured sources.
+    An empty set means a config exists but covers no bones.
+    """
+    settings = getattr(source.data, "re_rigify", None)
+    if settings is None:
+        return None
+    if not settings.bones and not settings.bone_rules:
+        return None
+
+    from .blender_config import armature_to_payload
+    from .rules import armature_rule_topology
+
+    payload = armature_to_payload(source.data)
+    parents, aligned_edges = armature_rule_topology(source.data)
+    resolved = materialize_bone_rules(
+        payload,
+        source.data.bones.keys(),
+        parents,
+        aligned_edges,
+    )
+    return configured_drive_bone_names(resolved["bones"])
+
 def _chain_rule_bone_names(source: bpy.types.Object) -> set[str]:
     from .rules import armature_rule_topology, rule_dicts
 
@@ -314,9 +345,18 @@ def connect_source_to_rig(source: bpy.types.Object, rig: bpy.types.Object) -> tu
     target_names = set(rig.pose.bones.keys())
     explicit = _load_drive_map(rig, DRIVE_MAP_PROPERTY)
     rotation_explicit = _load_drive_map(rig, ROTATION_DRIVE_MAP_PROPERTY)
+    covered = _configured_source_drive_bones(source)
+    # Explicit generation-time maps always stay eligible even if outside coverage.
+    if covered is not None:
+        covered = set(covered)
+        covered.update(explicit)
+        covered.update(rotation_explicit)
     unmatched: list[str] = []
     drive_specs = {}
     for pose_bone in source.pose.bones:
+        if covered is not None and pose_bone.name not in covered:
+            unmatched.append(pose_bone.name)
+            continue
         drive_spec = choose_drive_spec(
             pose_bone.name, target_names, explicit, rotation_explicit,
         )

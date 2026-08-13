@@ -7,6 +7,7 @@ from re_rigify.core import (
     EXPLICIT_CHAIN_MIN_LENGTHS,
     choose_drive_spec,
     choose_drive_target,
+    configured_drive_bone_names,
     infer_rigify_topology,
     materialize_bone_rules,
     mirror_compatibility,
@@ -688,6 +689,36 @@ class ConfigValidationTests(unittest.TestCase):
             ),
             ("MCH-RR-ShoulderRoll_L", "ROTATION"),
         )
+
+    def test_configured_drive_bones_include_roots_and_chains(self):
+        names = configured_drive_bone_names([
+            {
+                "bone_name": "足.L",
+                "rigify_type": "limbs.leg",
+                "chain_bones": ["足.L", "ひざ.L", "足首.L", "つま先.L", "Extra.L"],
+            },
+            {
+                "bone_name": "肩.L",
+                "rigify_type": "basic.super_copy",
+                "chain_bones": [],
+            },
+        ])
+        self.assertEqual(
+            names,
+            {"足.L", "ひざ.L", "足首.L", "つま先.L", "Extra.L", "肩.L"},
+        )
+
+    def test_configured_drive_bones_ignore_collection_only_bones(self):
+        names = configured_drive_bone_names([
+            {
+                "bone_name": "腰",
+                "rigify_type": "spines.basic_spine",
+                "chain_bones": ["腰", "上半身", "上半身2"],
+            },
+        ])
+        self.assertEqual(names, {"腰", "上半身", "上半身2"})
+        self.assertNotIn("センター", names)
+
 
     def test_infers_common_disconnected_arm_leg_spine_and_head_topology(self):
         parents = {
