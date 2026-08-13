@@ -101,6 +101,8 @@ def _finger(side: str, root: str, *rest: str) -> dict:
         "limbs.super_finger",
         chain=chain,
         force_connect=True,
+        # MMD finger rolls put automatic/+X curl toward the back of the hand.
+        super_finger_primary_axis="-X",
         parameters=_fk_tweak(tweak=f"Fingers Tweak.{side}"),
     )
 

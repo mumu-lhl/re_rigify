@@ -1321,6 +1321,14 @@ class BuiltInPresetTests(unittest.TestCase):
             by_name["人指１.L"]["compatibility"]["force_connect_chain"]
         )
         self.assertEqual(
+            by_name["人指１.L"]["compatibility"]["super_finger_primary_axis"],
+            "-X",
+        )
+        self.assertEqual(
+            by_name["親指０.R"]["compatibility"]["super_finger_primary_axis"],
+            "-X",
+        )
+        self.assertEqual(
             by_name["腰"]["chain_bones"],
             ["腰", "上半身", "上半身2", "上半身3"],
         )
