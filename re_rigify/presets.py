@@ -113,7 +113,8 @@ def build_mmd_jp_payload() -> dict:
 
     - spine: 腰 → 上半身 → 上半身2
     - toe: つま先.*
-    - heel: Extra.* as limbs.leg explicit-chain item 5
+    - heel: Extra.* as limbs.leg explicit-chain item 5; if missing on the
+      source armature, generation creates it only on the temporary metarig
     - shoulder widget: shoulder
     """
     bones = [

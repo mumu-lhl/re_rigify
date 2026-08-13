@@ -13,6 +13,7 @@ from re_rigify.core import (
     move_selected_indices,
     normalize_config,
     normalize_compatibility,
+    plan_missing_leg_heels,
     preview_bone_rule,
     mirror_parameter_value,
     rename_collection_references,
@@ -817,6 +818,87 @@ class ConfigValidationTests(unittest.TestCase):
             ("Foot_L", "Toe_L", True),
         ])
 
+    def test_plan_missing_leg_heels_for_explicit_chain(self):
+        bones = {
+            "足.L": {"head": (0.1, 0.0, 0.9), "tail": (0.1, 0.0, 0.5)},
+            "ひざ.L": {"head": (0.1, 0.0, 0.5), "tail": (0.1, 0.05, 0.12)},
+            "足首.L": {"head": (0.1, 0.05, 0.12), "tail": (0.1, -0.05, 0.04)},
+            "つま先.L": {"head": (0.1, -0.05, 0.04), "tail": (0.1, -0.12, 0.04)},
+        }
+        configs = [{
+            "bone_name": "足.L",
+            "rigify_type": "limbs.leg",
+            "chain_bones": ["足.L", "ひざ.L", "足首.L", "つま先.L", "Extra.L"],
+        }]
+
+        plans = plan_missing_leg_heels(configs, bones)
+
+        self.assertEqual(len(plans), 1)
+        plan = plans[0]
+        self.assertEqual(plan["name"], "Extra.L")
+        self.assertEqual(plan["parent"], "足首.L")
+        self.assertFalse(plan["use_connect"])
+        # Marker sits under the foot and points roughly backward (+Y).
+        self.assertAlmostEqual(plan["head"][0], 0.1, places=5)
+        self.assertLess(plan["head"][2], bones["足首.L"]["head"][2])
+        self.assertGreater(plan["tail"][1], plan["head"][1])
+        self.assertAlmostEqual(plan["tail"][2], plan["head"][2], places=5)
+
+    def test_plan_missing_leg_heels_skips_existing_heel(self):
+        bones = {
+            "Thigh_L": {"head": (0.1, 0.0, 1.0), "tail": (0.1, 0.0, 0.6)},
+            "Knee_L": {"head": (0.1, 0.0, 0.6), "tail": (0.1, 0.0, 0.2)},
+            "Foot_L": {"head": (0.1, 0.0, 0.2), "tail": (0.1, -0.08, 0.05)},
+            "Toe_L": {"head": (0.1, -0.08, 0.05), "tail": (0.1, -0.14, 0.05)},
+            "Heel_L": {"head": (0.1, 0.02, 0.02), "tail": (0.1, 0.08, 0.02)},
+        }
+        configs = [{
+            "bone_name": "Thigh_L",
+            "rigify_type": "limbs.leg",
+            "chain_bones": ["Thigh_L", "Knee_L", "Foot_L", "Toe_L", "Heel_L"],
+        }]
+
+        self.assertEqual(plan_missing_leg_heels(configs, bones), [])
+
+    def test_plan_missing_leg_heels_for_inferred_leg(self):
+        bones = {
+            "Thigh_L": {"head": (0.1, 0.0, 1.0), "tail": (0.1, 0.0, 0.6)},
+            "Knee_L": {"head": (0.1, 0.0, 0.6), "tail": (0.1, 0.0, 0.2)},
+            "Foot_L": {"head": (0.1, 0.0, 0.2), "tail": (0.1, -0.08, 0.05)},
+            "Toe_L": {"head": (0.1, -0.08, 0.05), "tail": (0.1, -0.14, 0.05)},
+        }
+        parents = {
+            "Thigh_L": None,
+            "Knee_L": "Thigh_L",
+            "Foot_L": "Knee_L",
+            "Toe_L": "Foot_L",
+        }
+
+        plans = plan_missing_leg_heels(
+            [{"bone_name": "Thigh_L", "rigify_type": "limbs.leg"}],
+            bones,
+            parents=parents,
+        )
+
+        self.assertEqual(len(plans), 1)
+        self.assertEqual(plans[0]["name"], "Thigh_L_heel")
+        self.assertEqual(plans[0]["parent"], "Foot_L")
+
+    def test_resolve_collection_rules_can_allow_missing_exact(self):
+        resolved = resolve_collection_rules(
+            ["足.L", "ひざ.L", "足首.L", "つま先.L"],
+            [{
+                "name": "Leg.L",
+                "rules": [
+                    {"kind": "EXACT", "pattern": "足.L"},
+                    {"kind": "EXACT", "pattern": "Extra.L"},
+                ],
+            }],
+            allow_missing_exact={"Extra.L"},
+        )
+        self.assertEqual(resolved["Leg.L"], ["足.L"])
+
+
 
 
     def test_explicit_spine_chain_overrides_source_parenting(self):
@@ -1031,7 +1113,7 @@ class BuiltInPresetTests(unittest.TestCase):
             "首", "頭",
             "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
             "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
-            "つま先.L", "つま先.R", "Extra.L", "Extra.R",
+            "つま先.L", "つま先.R",
         }
         for side in ("L", "R"):
             for root, a, b in (
@@ -1096,6 +1178,59 @@ class BuiltInPresetTests(unittest.TestCase):
         self.assertIn("Arm.L", visible)
         self.assertNotIn("Arm FK.L", visible)
         self.assertNotIn("Fingers Tweak.L", visible)
+
+    def test_mmd_jp_preset_is_valid_without_extra_heels(self):
+        from re_rigify.presets import build_preset_payload
+
+        payload = build_preset_payload("mmd_jp")
+        bone_names = {
+            "全ての親", "センター", "グルーブ", "腰", "下半身", "上半身", "上半身2",
+            "首", "頭",
+            "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
+            "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
+            "つま先.L", "つま先.R",
+        }
+        for side in ("L", "R"):
+            for root, a, b in (
+                ("親指０", "親指１", "親指２"),
+                ("人指１", "人指２", "人指３"),
+                ("中指１", "中指２", "中指３"),
+                ("薬指１", "薬指２", "薬指３"),
+                ("小指１", "小指２", "小指３"),
+            ):
+                bone_names.update({f"{root}.{side}", f"{a}.{side}", f"{b}.{side}"})
+
+        result = validate_config(
+            payload,
+            sorted(bone_names),
+            {
+                "basic.super_copy",
+                "limbs.arm",
+                "limbs.leg",
+                "limbs.super_finger",
+                "spines.basic_spine",
+                "spines.super_head",
+            },
+        )
+        self.assertTrue(result.ok, result.errors)
+
+        plans = plan_missing_leg_heels(
+            payload["bones"],
+            {
+                name: {"head": (0.0, 0.0, 1.0), "tail": (0.0, 0.0, 0.5)}
+                for name in bone_names
+            } | {
+                "足首.L": {"head": (0.1, 0.05, 0.12), "tail": (0.1, -0.05, 0.04)},
+                "足首.R": {"head": (-0.1, 0.05, 0.12), "tail": (-0.1, -0.05, 0.04)},
+                "つま先.L": {"head": (0.1, -0.05, 0.04), "tail": (0.1, -0.12, 0.04)},
+                "つま先.R": {"head": (-0.1, -0.05, 0.04), "tail": (-0.1, -0.12, 0.04)},
+            },
+        )
+        self.assertEqual(
+            {(plan["name"], plan["parent"]) for plan in plans},
+            {("Extra.L", "足首.L"), ("Extra.R", "足首.R")},
+        )
+
 
     def test_unknown_preset_is_rejected(self):
         from re_rigify.presets import build_preset_payload

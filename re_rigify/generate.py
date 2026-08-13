@@ -6,7 +6,12 @@ import json
 
 import bpy
 
-from .core import ConfigError, infer_rigify_topology, resolve_collection_rules
+from .core import (
+    ConfigError,
+    infer_rigify_topology,
+    plan_missing_leg_heels,
+    resolve_collection_rules,
+)
 from .compatibility import (
     apply_compatibility_plan,
     apply_connection_operations,
@@ -52,6 +57,8 @@ def validate_bone_parameters(
     context.scene.collection.objects.link(duplicate)
     context.view_layer.update()
     try:
+        # Match generation: temporary heels may exist only on the validation copy.
+        ensure_synthetic_leg_heels(duplicate, bones)
         apply_collection_config(duplicate, collections)
         apply_bone_config(duplicate, bones)
     except ConfigError as exc:
@@ -63,6 +70,53 @@ def validate_bone_parameters(
             bpy.data.armatures.remove(data)
     return ()
 
+
+
+def ensure_synthetic_leg_heels(obj: bpy.types.Object, bones: list[dict]) -> list[str]:
+    """Create temporary limbs.leg heel markers on a metarig copy only."""
+    bone_data = {
+        bone.name: {
+            "head": tuple(bone.head_local),
+            "tail": tuple(bone.tail_local),
+        }
+        for bone in obj.data.bones
+    }
+    parents = {
+        bone.name: bone.parent.name if bone.parent else None
+        for bone in obj.data.bones
+    }
+    plans = plan_missing_leg_heels(bones, bone_data, parents)
+    if not plans:
+        return []
+
+    previous_mode = obj.mode
+    if previous_mode != "EDIT":
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+    edit_bones = obj.data.edit_bones
+    created: list[str] = []
+    try:
+        for plan in plans:
+            if plan["name"] in edit_bones:
+                continue
+            parent = edit_bones.get(plan["parent"])
+            if parent is None:
+                raise ConfigError(
+                    format_iface(
+                        "bone does not exist: {bone_name!r}",
+                        bone_name=plan["parent"],
+                    )
+                )
+            heel = edit_bones.new(plan["name"])
+            heel.head = plan["head"]
+            heel.tail = plan["tail"]
+            heel.parent = parent
+            heel.use_connect = bool(plan["use_connect"])
+            created.append(plan["name"])
+    finally:
+        if previous_mode != "EDIT":
+            bpy.ops.object.mode_set(mode=previous_mode)
+    return created
 
 def apply_rigify_topology(context, obj: bpy.types.Object, bones: list[dict]) -> None:
     operations = infer_rigify_topology(
@@ -323,6 +377,8 @@ def generate_rig(context: bpy.types.Context, source: bpy.types.Object, payload: 
         previous_rig = resolve_existing_target_rig(source)
         cleanup_rigify_ui_scripts(previous_rig)
         duplicate = prepare_metarig(source)
+        # Heel markers required by Rigify limbs.leg live only on the metarig.
+        ensure_synthetic_leg_heels(duplicate, payload["bones"])
         apply_collection_config(duplicate, payload["collections"])
         apply_bone_config(duplicate, payload["bones"])
         apply_color_config(duplicate, payload.get("color_sets", []), payload["collections"])

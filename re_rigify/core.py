@@ -619,6 +619,136 @@ def infer_rigify_topology(
             operations.append((root, head, True))
     return operations
 
+def _heel_marker_geometry(
+    foot: dict[str, Any],
+    toe: dict[str, Any],
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Build a short unconnected heel marker under the foot bone."""
+    foot_head = tuple(float(v) for v in foot["head"])
+    foot_tail = tuple(float(v) for v in foot["tail"])
+    toe_head = tuple(float(v) for v in toe["head"])
+    foot_len = sum((a - b) ** 2 for a, b in zip(foot_head, foot_tail)) ** 0.5
+    length = max(foot_len * 0.35, 0.03)
+    ground_z = min(foot_tail[2], toe_head[2]) * 0.5
+    if ground_z <= 0:
+        ground_z = foot_tail[2] * 0.3
+    if ground_z > foot_tail[2]:
+        ground_z = foot_tail[2] * 0.5
+    head = (foot_head[0], foot_head[1], ground_z)
+    tail = (head[0], head[1] + length, head[2])
+    return head, tail
+
+
+def plan_missing_leg_heels(
+    bone_configs: Iterable[dict[str, Any]],
+    bones: dict[str, dict[str, Any]],
+    parents: dict[str, str | None] | None = None,
+) -> list[dict[str, Any]]:
+    """Plan temporary heel markers for limbs.leg when the source has none.
+
+    Rigify requires an unconnected heel under the foot. Re-Rigify keeps the
+    source armature unchanged and only materializes these bones on the
+    temporary metarig copy.
+    """
+    parent_map = dict(parents or {})
+    children: dict[str, list[str]] = {name: [] for name in parent_map}
+    for child, parent in parent_map.items():
+        if parent:
+            children.setdefault(parent, []).append(child)
+
+    def normalized(name: str) -> str:
+        return name.lower().replace(".", "_").replace("-", "_")
+
+    def descendants(root: str) -> list[str]:
+        result, queue = [], list(children.get(root, ()))
+        while queue:
+            name = queue.pop(0)
+            result.append(name)
+            queue.extend(children.get(name, ()))
+        return result
+
+    def find(
+        root: str | None,
+        keywords: tuple[str, ...],
+        *,
+        exclude: set[str] | None = None,
+    ) -> str | None:
+        if not root:
+            return None
+        excluded = exclude or set()
+        for keyword in keywords:
+            for name in descendants(root):
+                if name not in excluded and keyword in normalized(name):
+                    return name
+        return None
+
+    plans: list[dict[str, Any]] = []
+    used_names = set(bones)
+
+    for config in bone_configs:
+        if config.get("rigify_type") != "limbs.leg":
+            continue
+        root = config["bone_name"]
+        explicit_chain = list(config.get("chain_bones") or [])
+        foot_name = None
+        toe_name = None
+        heel_name = None
+
+        if explicit_chain:
+            if len(explicit_chain) < 4:
+                continue
+            foot_name = explicit_chain[2]
+            toe_name = explicit_chain[3]
+            if len(explicit_chain) >= 5:
+                heel_name = explicit_chain[4]
+            else:
+                heel_name = unique_blender_name(f"{root}_heel", used_names)
+        else:
+            knee = find(root, ("knee", "shin", "lower_leg", "ひざ"))
+            foot_name = (
+                find(knee, ("ankle_offset", "foot", "ankle", "足首"))
+                if knee else None
+            )
+            toe_name = find(foot_name, ("toe", "つま先")) if foot_name else None
+            heel_name = None
+            if knee and foot_name and toe_name:
+                heel_name = find(knee, ("heel", "extra"), exclude={foot_name, toe_name})
+                if heel_name is None:
+                    heel_name = next(
+                        (
+                            name for name in descendants(knee)
+                            if name not in {foot_name, toe_name}
+                            and "ankle" in normalized(name)
+                            and "offset" not in normalized(name)
+                        ),
+                        None,
+                    )
+            if heel_name is not None:
+                continue
+            if not foot_name or not toe_name:
+                continue
+            heel_name = unique_blender_name(f"{root}_heel", used_names)
+
+        if not foot_name or not toe_name or not heel_name:
+            continue
+        if heel_name in bones:
+            continue
+        if foot_name not in bones or toe_name not in bones:
+            continue
+
+        head, tail = _heel_marker_geometry(bones[foot_name], bones[toe_name])
+        plans.append({
+            "name": heel_name,
+            "parent": foot_name,
+            "head": head,
+            "tail": tail,
+            "use_connect": False,
+        })
+        used_names.add(heel_name)
+
+    return plans
+
+
 
 def _require_type(value: Any, expected: type, path: str) -> Any:
     if not isinstance(value, expected):
@@ -841,9 +971,12 @@ def normalize_config(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def resolve_collection_rules(
-    bone_names: Iterable[str], collections: Iterable[dict[str, Any]]
+    bone_names: Iterable[str],
+    collections: Iterable[dict[str, Any]],
+    allow_missing_exact: Iterable[str] | None = None,
 ) -> dict[str, list[str]]:
     names = list(bone_names)
+    allowed_missing = set(allow_missing_exact or ())
     resolved: dict[str, list[str]] = {}
     for collection in collections:
         members: list[str] = []
@@ -854,6 +987,8 @@ def resolve_collection_rules(
             else:
                 matches = [name for name in names if fnmatchcase(name, pattern)]
             if not matches:
+                if rule["kind"] == "EXACT" and pattern in allowed_missing:
+                    continue
                 raise ConfigError(
                     format_iface(
                         "{kind} pattern {pattern!r} in collection "
@@ -868,6 +1003,7 @@ def resolve_collection_rules(
                     members.append(name)
         resolved[collection["name"]] = members
     return resolved
+
 
 
 def validate_config(
@@ -1007,16 +1143,24 @@ def validate_config(
                     )
                 )
             chain_seen: set[str] = set()
-            for chain_bone in chain_bones:
+            for index, chain_bone in enumerate(chain_bones):
                 if chain_bone not in names:
-                    errors.append(
-                        format_iface(
-                            "bone {bone_name!r} explicit chain bone does "
-                            "not exist: {chain_bone!r}",
-                            bone_name=name,
-                            chain_bone=chain_bone,
-                        )
+                    # limbs.leg heel may be synthesized only on the temporary metarig.
+                    allow_synthetic_heel = (
+                        item["rigify_type"] == "limbs.leg"
+                        and index == 4
+                        and len(chain_bones) >= 5
+                        and all(part in names for part in chain_bones[:4])
                     )
+                    if not allow_synthetic_heel:
+                        errors.append(
+                            format_iface(
+                                "bone {bone_name!r} explicit chain bone does "
+                                "not exist: {chain_bone!r}",
+                                bone_name=name,
+                                chain_bone=chain_bone,
+                            )
+                        )
                 if chain_bone in chain_seen:
                     errors.append(
                         format_iface(
@@ -1080,7 +1224,21 @@ def validate_config(
             occupied_slots.add(slot)
 
     try:
-        resolve_collection_rules(names, config["collections"])
+        dummy_bones = {
+            bone_name: {"head": (0.0, 0.0, 0.0), "tail": (0.0, 0.0, 1.0)}
+            for bone_name in names
+        }
+        synthetic_heels = {
+            plan["name"]
+            for plan in plan_missing_leg_heels(
+                effective["bones"], dummy_bones, parents,
+            )
+        }
+        resolve_collection_rules(
+            names,
+            config["collections"],
+            allow_missing_exact=synthetic_heels,
+        )
     except ConfigError as exc:
         errors.append(str(exc))
     return ValidationResult(tuple(errors))
