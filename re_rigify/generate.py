@@ -44,6 +44,8 @@ def validate_bone_parameters(
     context, source: bpy.types.Object, bones: list[dict], collections: list[dict] = ()
 ) -> tuple[str, ...]:
     """Validate against the active Rigify RNA without touching the source armature."""
+    previous_active = context.view_layer.objects.active
+    previous_selected = [obj for obj in context.view_layer.objects if obj.select_get()]
     try:
         infer_rigify_topology(
             bones,
@@ -68,8 +70,21 @@ def validate_bone_parameters(
         bpy.data.objects.remove(duplicate, do_unlink=True)
         if data.users == 0:
             bpy.data.armatures.remove(data)
+        for obj in context.view_layer.objects:
+            if obj.select_get():
+                obj.select_set(False)
+        for obj in previous_selected:
+            if obj.name in context.view_layer.objects:
+                obj.select_set(True)
+        if (
+            previous_active is not None
+            and previous_active.name in context.view_layer.objects
+        ):
+            context.view_layer.objects.active = previous_active
+        elif source.name in context.view_layer.objects:
+            source.select_set(True)
+            context.view_layer.objects.active = source
     return ()
-
 
 
 def ensure_synthetic_leg_heels(obj: bpy.types.Object, bones: list[dict]) -> list[str]:
@@ -89,9 +104,19 @@ def ensure_synthetic_leg_heels(obj: bpy.types.Object, bones: list[dict]) -> list
     if not plans:
         return []
 
+    context = bpy.context
+    previous_active = context.view_layer.objects.active
+    previous_selected = [candidate for candidate in context.view_layer.objects if candidate.select_get()]
     previous_mode = obj.mode
-    if previous_mode != "EDIT":
-        bpy.context.view_layer.objects.active = obj
+    changed_active = previous_mode != "EDIT"
+    if changed_active:
+        for candidate in context.view_layer.objects:
+            if candidate.select_get():
+                candidate.select_set(False)
+        obj.hide_set(False)
+        obj.hide_select = False
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
         bpy.ops.object.mode_set(mode="EDIT")
     edit_bones = obj.data.edit_bones
     created: list[str] = []
@@ -114,8 +139,23 @@ def ensure_synthetic_leg_heels(obj: bpy.types.Object, bones: list[dict]) -> list
             heel.use_connect = bool(plan["use_connect"])
             created.append(plan["name"])
     finally:
-        if previous_mode != "EDIT":
-            bpy.ops.object.mode_set(mode=previous_mode)
+        if changed_active:
+            try:
+                if obj.mode != previous_mode:
+                    bpy.ops.object.mode_set(mode=previous_mode)
+            except RuntimeError:
+                pass
+            for candidate in context.view_layer.objects:
+                if candidate.select_get():
+                    candidate.select_set(False)
+            for candidate in previous_selected:
+                if candidate.name in context.view_layer.objects:
+                    candidate.select_set(True)
+            if (
+                previous_active is not None
+                and previous_active.name in context.view_layer.objects
+            ):
+                context.view_layer.objects.active = previous_active
     return created
 
 def apply_rigify_topology(context, obj: bpy.types.Object, bones: list[dict]) -> None:

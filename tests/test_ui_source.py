@@ -61,6 +61,20 @@ class PanelStructureTests(unittest.TestCase):
         self.assertIn("RERIGIFY_OT_ApplyPreset", operator_source)
         self.assertTrue(Path("re_rigify/presets.py").exists())
 
+    def test_apply_preset_operator_keeps_source_selected(self):
+        operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
+        apply_idx = operator_source.index("class RERIGIFY_OT_ApplyPreset")
+        generate_idx = operator_source.index("class RERIGIFY_OT_Generate")
+        body = operator_source[apply_idx:generate_idx]
+        self.assertIn("if not self.generate:", body)
+        self.assertIn("select_only(context, obj)", body)
+        # Generate path may still focus the new rig; apply-only must not.
+        before_generate = body.split("if not self.generate:", 1)[1].split(
+            "obj, errors = validate_active", 1
+        )[0]
+        self.assertIn("select_only(context, obj)", before_generate)
+
+
 
     def test_color_panel_exposes_root_color_set(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")

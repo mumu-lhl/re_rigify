@@ -1211,6 +1211,7 @@ class RERIGIFY_OT_ApplyPreset(bpy.types.Operator):
             return {"CANCELLED"}
 
         if not self.generate:
+            select_only(context, obj)
             self.report(
                 {"INFO"},
                 format_iface(
