@@ -1326,24 +1326,32 @@ class BuiltInPresetTests(unittest.TestCase):
         self.assertEqual(by_name["目.L"]["compatibility"]["eye_forward_axis"], "-Y")
         self.assertEqual(by_name["目.R"]["rigify_type"], "face.skin_eye")
         self.assertEqual(by_name["目.R"]["compatibility"]["eye_forward_axis"], "-Y")
-        self.assertIn("Face", {c["name"] for c in payload["collections"]})
-
+        face = next(c for c in payload["collections"] if c["name"] == "Face")
+        self.assertEqual(
+            [rule["pattern"] for rule in face["rules"]],
+            ["目.L", "目.R"],
+        )
+        self.assertEqual(face["ui_row"], 3)
 
         rows = {}
         for collection in payload["collections"]:
             rows.setdefault(collection["ui_row"], []).append(collection["name"])
-        self.assertEqual(rows[3], ["Arm.L", "Arm.R"])
-        self.assertEqual(rows[4], ["Arm FK.L", "Arm FK.R"])
-        self.assertEqual(rows[5], ["Arm Tweak.L", "Arm Tweak.R"])
-        self.assertNotIn(2, rows)
-        self.assertNotIn(6, rows)
-        self.assertNotIn(10, rows)
+        self.assertEqual(rows[1], ["Root", "Torso"])
+        self.assertEqual(rows[2], ["Torso FK", "Torso Tweak"])
+        self.assertEqual(rows[3], ["Head", "Face", "Head Tweak"])
+        self.assertEqual(rows[5], ["Arm.L", "Arm.R"])
+        self.assertEqual(rows[6], ["Arm FK.L", "Arm FK.R"])
+        self.assertEqual(rows[7], ["Arm Tweak.L", "Arm Tweak.R"])
+        self.assertNotIn(4, rows)
+        self.assertNotIn(8, rows)
+        self.assertNotIn(12, rows)
         visible = {
             item["name"]
             for item in payload["collections"]
             if item["visible_after_generation"]
         }
         self.assertIn("Arm.L", visible)
+        self.assertIn("Face", visible)
         self.assertNotIn("Arm FK.L", visible)
         self.assertNotIn("Fingers Tweak.L", visible)
 

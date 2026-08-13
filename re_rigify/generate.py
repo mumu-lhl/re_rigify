@@ -242,7 +242,7 @@ def fix_generated_control_display(rig: bpy.types.Object) -> dict[str, int]:
       rewrite those rest orientations here (constraints depend on them).
     """
     if rig is None or rig.type != "ARMATURE":
-        return {"shoulders_flipped": 0}
+        return {"shoulders_flipped": 0, "synthetic_lids_hidden": 0}
     flipped = 0
     world_up = (0.0, 0.0, 1.0)
     for pose_bone in rig.pose.bones:
@@ -271,7 +271,45 @@ def fix_generated_control_display(rig: bpy.types.Object) -> dict[str, int]:
             scale[2] = -scale[2]
             pose_bone.custom_shape_scale_xyz = scale
             flipped += 1
-    return {"shoulders_flipped": flipped}
+    return {
+        "shoulders_flipped": flipped,
+        "synthetic_lids_hidden": hide_synthetic_eyelid_controls(rig),
+    }
+
+
+def hide_synthetic_eyelid_controls(rig: bpy.types.Object) -> int:
+    """Hide Rigify eyelid scaffolding created for eyes without real lids.
+
+    ``face.skin_eye`` requires upper/lower child chains. Re-Rigify may inject
+    temporary ``RR-lid*`` bones so the eye target/master still generate. Those
+    controls cannot drive source eyelids, so hide them on the finished rig.
+    """
+    if rig is None or rig.type != "ARMATURE":
+        return 0
+    hidden = 0
+    collection = rig.data.collections_all.get("Re-Rigify Hidden Lids")
+    for pose_bone in rig.pose.bones:
+        name = pose_bone.name
+        # Match helper, deform, and control derivatives of synthetic lid chains.
+        if "RR-lid" not in name and "rr-lid" not in name.lower():
+            continue
+        bone = pose_bone.bone
+        bone.hide = True
+        if collection is None:
+            collection = rig.data.collections.new("Re-Rigify Hidden Lids")
+            collection.is_visible = False
+            if hasattr(collection, "rigify_ui_row"):
+                collection.rigify_ui_row = 0
+        for existing in list(bone.collections):
+            existing.unassign(bone)
+        collection.assign(bone)
+        if pose_bone.custom_shape is not None:
+            pose_bone.custom_shape = None
+        hidden += 1
+    if collection is not None:
+        collection.is_visible = False
+    return hidden
+
 
 
 

@@ -115,9 +115,10 @@ def build_mmd_jp_payload() -> dict:
     - toe: つま先.*
     - heel: Extra.* as limbs.leg explicit-chain item 5; if missing on the
       source armature, generation creates it only on the temporary metarig
-    - eyes: 目.L/R as face.skin_eye with synthetic lids fallback so standard
-      MMD eyes work without eyelid landmark chains
+    - eyes: 目.L/R as face.skin_eye (eyeball target/master). Synthetic lids are
+      only generation scaffolding and are hidden afterward; Face holds eyes only
     - shoulder widget: shoulder
+    - UI rows are spaced so Root/Torso/Head/Face are not jammed on one button row
     """
     bones = [
         _bone(
@@ -224,23 +225,23 @@ def build_mmd_jp_payload() -> dict:
             True,
             _exact("腰", "下半身", "上半身", "上半身2"),
         ),
-        _coll("Torso FK", "FK", 1, 2, "FK", False),
-        _coll("Torso Tweak", "Tweak", 1, 3, "Tweak", False),
-        _coll("Head", "Head", 1, 4, "Special", True, _exact("首", "頭")),
-        _coll("Head Tweak", "Tweak", 1, 5, "Tweak", False),
+        _coll("Torso FK", "FK", 2, 0, "FK", False),
+        _coll("Torso Tweak", "Tweak", 2, 1, "Tweak", False),
+        _coll("Head", "Head", 3, 0, "Special", True, _exact("首", "頭")),
         _coll(
             "Face",
             "Face",
+            3,
             1,
-            6,
             "Special",
             True,
             _exact("目.L", "目.R"),
         ),
+        _coll("Head Tweak", "Tweak", 3, 2, "Tweak", False),
         _coll(
             "Arm.L",
             "Arm.L",
-            3,
+            5,
             0,
             "IK",
             True,
@@ -249,20 +250,20 @@ def build_mmd_jp_payload() -> dict:
         _coll(
             "Arm.R",
             "Arm.R",
-            3,
+            5,
             1,
             "IK",
             True,
             _exact("肩.R", "腕.R", "ひじ.R", "手首.R"),
         ),
-        _coll("Arm FK.L", "FK", 4, 0, "FK", False),
-        _coll("Arm FK.R", "FK", 4, 1, "FK", False),
-        _coll("Arm Tweak.L", "Tweak", 5, 0, "Tweak", False),
-        _coll("Arm Tweak.R", "Tweak", 5, 1, "Tweak", False),
+        _coll("Arm FK.L", "FK", 6, 0, "FK", False),
+        _coll("Arm FK.R", "FK", 6, 1, "FK", False),
+        _coll("Arm Tweak.L", "Tweak", 7, 0, "Tweak", False),
+        _coll("Arm Tweak.R", "Tweak", 7, 1, "Tweak", False),
         _coll(
             "Leg.L",
             "Leg.L",
-            7,
+            9,
             0,
             "IK",
             True,
@@ -271,20 +272,20 @@ def build_mmd_jp_payload() -> dict:
         _coll(
             "Leg.R",
             "Leg.R",
-            7,
+            9,
             1,
             "IK",
             True,
             _exact("足.R", "ひざ.R", "足首.R", "つま先.R", "Extra.R"),
         ),
-        _coll("Leg FK.L", "FK", 8, 0, "FK", False),
-        _coll("Leg FK.R", "FK", 8, 1, "FK", False),
-        _coll("Leg Tweak.L", "Tweak", 9, 0, "Tweak", False),
-        _coll("Leg Tweak.R", "Tweak", 9, 1, "Tweak", False),
+        _coll("Leg FK.L", "FK", 10, 0, "FK", False),
+        _coll("Leg FK.R", "FK", 10, 1, "FK", False),
+        _coll("Leg Tweak.L", "Tweak", 11, 0, "Tweak", False),
+        _coll("Leg Tweak.R", "Tweak", 11, 1, "Tweak", False),
         _coll(
             "Fingers.L",
             "Fingers.L",
-            11,
+            13,
             0,
             "Extra",
             True,
@@ -293,14 +294,14 @@ def build_mmd_jp_payload() -> dict:
         _coll(
             "Fingers.R",
             "Fingers.R",
-            11,
+            13,
             1,
             "Extra",
             True,
             _glob("人指*.R", "中指*.R", "薬指*.R", "小指*.R", "親指*.R"),
         ),
-        _coll("Fingers Tweak.L", "Tweak", 12, 0, "Tweak", False),
-        _coll("Fingers Tweak.R", "Tweak", 12, 1, "Tweak", False),
+        _coll("Fingers Tweak.L", "Tweak", 14, 0, "Tweak", False),
+        _coll("Fingers Tweak.R", "Tweak", 14, 1, "Tweak", False),
     ]
 
     return normalize_config(

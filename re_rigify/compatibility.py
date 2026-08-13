@@ -553,8 +553,12 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
                 root.rigify_parameters.bbones = 5
             for segment in chain:
                 helper_bone = obj.data.bones[segment.helper_name]
-                for collection in eye_bone.collections:
-                    collection.assign(helper_bone)
+                # Synthetic lids (source_name is None) are only scaffolding for
+                # face.skin_eye. Keep them out of the eye's UI collections so
+                # Face stays eyeball-only for MMD-style presets.
+                if segment.source_name:
+                    for collection in eye_bone.collections:
+                        collection.assign(helper_bone)
     return dict(plan.source_to_helper)
 
 
