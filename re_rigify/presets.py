@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-
+from typing import Iterable
 from .core import (
     DEFAULT_COMPATIBILITY,
     FORMAT_NAME,
@@ -111,7 +111,7 @@ def build_mmd_jp_payload() -> dict:
     Bone names follow common MMD JP keys (MikuMikuRig MMD_JP.json) plus the
     Re-Rigify conventions used in this project:
 
-    - spine: 腰 → 上半身 → 上半身2
+    - spine: 腰 → 上半身 → 上半身2 → 上半身3 (chest widget sits on the last bone)
     - toe: つま先.*
     - heel: Extra.* as limbs.leg explicit-chain item 5; if missing on the
       source armature, generation creates it only on the temporary metarig
@@ -172,14 +172,15 @@ def build_mmd_jp_payload() -> dict:
         _finger("R", "人指１", "人指２", "人指３"),
         _finger("R", "中指１", "中指２", "中指３"),
         _finger("R", "薬指１", "薬指２", "薬指３"),
-        _finger("R", "小指１", "小指２", "小指３"),
         _bone(
             "腰",
             "spines.basic_spine",
-            chain=["腰", "上半身", "上半身2"],
+            chain=["腰", "上半身", "上半身2", "上半身3"],
             parameters={
                 **_fk_tweak(fk="Torso FK", tweak="Torso Tweak"),
                 "make_fk_controls": True,
+                # hips = bone 0 (腰); chest control starts at bone 1 (上半身);
+                # chest widget rides the last org (上半身3).
                 "pivot_pos": 1,
             },
         ),
@@ -223,7 +224,7 @@ def build_mmd_jp_payload() -> dict:
             1,
             "Special",
             True,
-            _exact("腰", "下半身", "上半身", "上半身2"),
+            _exact("腰", "下半身", "上半身", "上半身2", "上半身3"),
         ),
         _coll("Torso FK", "FK", 2, 0, "FK", False),
         _coll("Torso Tweak", "Tweak", 2, 1, "Tweak", False),
@@ -315,6 +316,34 @@ def build_mmd_jp_payload() -> dict:
             "root_color_set": "Root",
         }
     )
+
+
+def adapt_mmd_jp_payload(payload: dict, bone_names: Iterable[str]) -> dict:
+    """Trim optional MMD spine segments missing on the target armature.
+
+    Longer chests (上半身3) raise the chest widget; classic 3-bone torsos keep
+    腰 → 上半身 → 上半身2 without rejecting the preset.
+    """
+    names = set(bone_names)
+    adapted = deepcopy(payload)
+    spine_candidates = ["腰", "上半身", "上半身2", "上半身3"]
+    spine_chain = [name for name in spine_candidates if name in names]
+    if len(spine_chain) >= 3:
+        for item in adapted["bones"]:
+            if item.get("bone_name") == "腰" and item.get("rigify_type") == "spines.basic_spine":
+                item["chain_bones"] = list(spine_chain)
+                break
+    # Drop EXACT collection rules for optional bones that are absent.
+    for collection in adapted.get("collections", []):
+        rules = []
+        for rule in collection.get("rules", []):
+            if rule.get("kind") == "EXACT" and rule.get("pattern") not in names:
+                if rule["pattern"] in {"上半身3", "Extra.L", "Extra.R", "目.L", "目.R"}:
+                    continue
+            rules.append(rule)
+        collection["rules"] = rules
+    return adapted
+
 
 
 PRESET_BUILDERS = {

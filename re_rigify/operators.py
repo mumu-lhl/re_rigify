@@ -1138,10 +1138,13 @@ def _apply_preset_payload(context, obj, preset_id: str):
     """Validate and write a built-in preset onto the active armature."""
     from .rules import armature_rule_topology
     from .ui import flush_parameter_carrier, remove_parameter_carrier
+    from .presets import adapt_mmd_jp_payload
 
     flush_parameter_carrier()
     remove_parameter_carrier()
     payload = build_preset_payload(preset_id)
+    if preset_id == "mmd_jp":
+        payload = adapt_mmd_jp_payload(payload, obj.data.bones.keys())
     parents, aligned_edges = armature_rule_topology(obj.data)
     resolved = materialize_bone_rules(
         payload,

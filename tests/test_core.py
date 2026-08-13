@@ -1269,7 +1269,7 @@ class BuiltInPresetTests(unittest.TestCase):
         payload = build_preset_payload("mmd_jp")
         bone_names = {
             "全ての親", "センター", "グルーブ", "腰", "下半身", "上半身", "上半身2",
-            "首", "頭", "目.L", "目.R",
+            "上半身3", "首", "頭", "目.L", "目.R",
             "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
             "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
             "つま先.L", "つま先.R",
@@ -1320,6 +1320,10 @@ class BuiltInPresetTests(unittest.TestCase):
         self.assertTrue(
             by_name["人指１.L"]["compatibility"]["force_connect_chain"]
         )
+        self.assertEqual(
+            by_name["腰"]["chain_bones"],
+            ["腰", "上半身", "上半身2", "上半身3"],
+        )
         self.assertEqual(by_name["目.L"]["rigify_type"], "face.skin_eye")
         self.assertTrue(by_name["目.L"]["compatibility"]["skin_eye_compatibility"])
         self.assertTrue(by_name["目.L"]["compatibility"]["synthetic_lids_fallback"])
@@ -1361,7 +1365,7 @@ class BuiltInPresetTests(unittest.TestCase):
         payload = build_preset_payload("mmd_jp")
         bone_names = {
             "全ての親", "センター", "グルーブ", "腰", "下半身", "上半身", "上半身2",
-            "首", "頭", "目.L", "目.R",
+            "上半身3", "首", "頭", "目.L", "目.R",
             "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
             "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
             "つま先.L", "つま先.R",
@@ -1407,6 +1411,54 @@ class BuiltInPresetTests(unittest.TestCase):
             {(plan["name"], plan["parent"]) for plan in plans},
             {("Extra.L", "足首.L"), ("Extra.R", "足首.R")},
         )
+
+    def test_mmd_jp_spine_adapts_when_upper3_missing(self):
+        from re_rigify.presets import adapt_mmd_jp_payload, build_preset_payload
+
+        payload = build_preset_payload("mmd_jp")
+        bone_names = {
+            "全ての親", "センター", "グルーブ", "腰", "下半身", "上半身", "上半身2",
+            "首", "頭", "目.L", "目.R",
+            "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
+            "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
+            "つま先.L", "つま先.R",
+        }
+        for side in ("L", "R"):
+            for root, a, b in (
+                ("親指０", "親指１", "親指２"),
+                ("人指１", "人指２", "人指３"),
+                ("中指１", "中指２", "中指３"),
+                ("薬指１", "薬指２", "薬指３"),
+                ("小指１", "小指２", "小指３"),
+            ):
+                bone_names.update({f"{root}.{side}", f"{a}.{side}", f"{b}.{side}"})
+
+        adapted = adapt_mmd_jp_payload(payload, bone_names)
+        by_name = {item["bone_name"]: item for item in adapted["bones"]}
+        self.assertEqual(
+            by_name["腰"]["chain_bones"],
+            ["腰", "上半身", "上半身2"],
+        )
+        torso = next(c for c in adapted["collections"] if c["name"] == "Torso")
+        self.assertNotIn(
+            "上半身3",
+            [rule["pattern"] for rule in torso["rules"]],
+        )
+        result = validate_config(
+            adapted,
+            sorted(bone_names),
+            {
+                "basic.super_copy",
+                "face.skin_eye",
+                "limbs.arm",
+                "limbs.leg",
+                "limbs.super_finger",
+                "spines.basic_spine",
+                "spines.super_head",
+            },
+        )
+        self.assertTrue(result.ok, result.errors)
+
 
 
     def test_unknown_preset_is_rejected(self):
