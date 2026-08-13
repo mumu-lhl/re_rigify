@@ -1269,7 +1269,7 @@ class BuiltInPresetTests(unittest.TestCase):
         payload = build_preset_payload("mmd_jp")
         bone_names = {
             "全ての親", "センター", "グルーブ", "腰", "下半身", "上半身", "上半身2",
-            "首", "頭",
+            "首", "頭", "目.L", "目.R",
             "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
             "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
             "つま先.L", "つま先.R",
@@ -1289,6 +1289,7 @@ class BuiltInPresetTests(unittest.TestCase):
             sorted(bone_names),
             {
                 "basic.super_copy",
+                "face.skin_eye",
                 "limbs.arm",
                 "limbs.leg",
                 "limbs.super_finger",
@@ -1319,6 +1320,14 @@ class BuiltInPresetTests(unittest.TestCase):
         self.assertTrue(
             by_name["人指１.L"]["compatibility"]["force_connect_chain"]
         )
+        self.assertEqual(by_name["目.L"]["rigify_type"], "face.skin_eye")
+        self.assertTrue(by_name["目.L"]["compatibility"]["skin_eye_compatibility"])
+        self.assertTrue(by_name["目.L"]["compatibility"]["synthetic_lids_fallback"])
+        self.assertEqual(by_name["目.L"]["compatibility"]["eye_forward_axis"], "-Y")
+        self.assertEqual(by_name["目.R"]["rigify_type"], "face.skin_eye")
+        self.assertEqual(by_name["目.R"]["compatibility"]["eye_forward_axis"], "-Y")
+        self.assertIn("Face", {c["name"] for c in payload["collections"]})
+
 
         rows = {}
         for collection in payload["collections"]:
@@ -1344,7 +1353,7 @@ class BuiltInPresetTests(unittest.TestCase):
         payload = build_preset_payload("mmd_jp")
         bone_names = {
             "全ての親", "センター", "グルーブ", "腰", "下半身", "上半身", "上半身2",
-            "首", "頭",
+            "首", "頭", "目.L", "目.R",
             "肩.L", "肩.R", "腕.L", "腕.R", "ひじ.L", "ひじ.R", "手首.L", "手首.R",
             "足.L", "足.R", "ひざ.L", "ひざ.R", "足首.L", "足首.R",
             "つま先.L", "つま先.R",
@@ -1364,6 +1373,7 @@ class BuiltInPresetTests(unittest.TestCase):
             sorted(bone_names),
             {
                 "basic.super_copy",
+                "face.skin_eye",
                 "limbs.arm",
                 "limbs.leg",
                 "limbs.super_finger",

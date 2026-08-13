@@ -115,6 +115,8 @@ def build_mmd_jp_payload() -> dict:
     - toe: つま先.*
     - heel: Extra.* as limbs.leg explicit-chain item 5; if missing on the
       source armature, generation creates it only on the temporary metarig
+    - eyes: 目.L/R as face.skin_eye with synthetic lids fallback so standard
+      MMD eyes work without eyelid landmark chains
     - shoulder widget: shoulder
     """
     bones = [
@@ -186,6 +188,21 @@ def build_mmd_jp_payload() -> dict:
             chain=["首", "頭"],
             parameters=_fk_tweak(tweak="Head Tweak"),
         ),
+        _bone(
+            "目.L",
+            "face.skin_eye",
+            skin_eye_compatibility=True,
+            # Standard MMD faces look along -Y; AUTO needs eyelid landmarks.
+            eye_forward_axis="-Y",
+            synthetic_lids_fallback=True,
+        ),
+        _bone(
+            "目.R",
+            "face.skin_eye",
+            skin_eye_compatibility=True,
+            eye_forward_axis="-Y",
+            synthetic_lids_fallback=True,
+        ),
     ]
 
     collections = [
@@ -211,6 +228,15 @@ def build_mmd_jp_payload() -> dict:
         _coll("Torso Tweak", "Tweak", 1, 3, "Tweak", False),
         _coll("Head", "Head", 1, 4, "Special", True, _exact("首", "頭")),
         _coll("Head Tweak", "Tweak", 1, 5, "Tweak", False),
+        _coll(
+            "Face",
+            "Face",
+            1,
+            6,
+            "Special",
+            True,
+            _exact("目.L", "目.R"),
+        ),
         _coll(
             "Arm.L",
             "Arm.L",
