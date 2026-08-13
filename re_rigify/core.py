@@ -35,11 +35,21 @@ EXPLICIT_CHAIN_MIN_LENGTHS = {
     "limbs.arm": 3,
     "limbs.leg": 4,
     "limbs.super_finger": 2,
+    "limbs.simple_tentacle": 2,
     "limbs.spline_tentacle": 2,
     "spines.basic_spine": 3,
     "spines.basic_tail": 2,
     "spines.super_head": 2,
 }
+
+# Chain types generation/compatibility resolve via unique-child parenting
+# rather than keyword topology (arm/leg/spine/head).
+UNIQUE_CHILD_CHAIN_RIG_TYPES = frozenset({
+    "limbs.super_finger",
+    "limbs.simple_tentacle",
+    "limbs.spline_tentacle",
+    "spines.basic_tail",
+})
 
 CHAIN_RULE_MIN_LENGTHS = {
     "limbs.super_finger": 2,
@@ -161,13 +171,14 @@ def configured_drive_bone_names(
     Coverage is:
     - configured roots
     - explicit chain members
-    - when *parents* is provided and a chain type has no explicit chain, the
-      same bones ``infer_rigify_topology`` would wire for generation
-      (``limbs.arm`` / ``limbs.leg`` / spine / head, etc.)
+    - when *parents* is provided and there is no explicit chain:
+      - ``limbs.arm`` / ``limbs.leg`` / spine / head via ``infer_rigify_topology``
+      - ``limbs.super_finger`` / tentacle / ``spines.basic_tail`` via
+        ``unique_child_chain``
 
     Collection membership alone does not count. Topology expansion only walks
-    parent→child ops from the root, so ``spines.super_head`` does not pull in
-    the neck's parent.
+    parent→child from the root, so ``spines.super_head`` does not pull in the
+    neck's parent, and one finger does not claim a sibling finger.
     """
     names: set[str] = set()
     for config in bone_configs:
@@ -183,6 +194,13 @@ def configured_drive_bone_names(
         if explicit_chain or parents is None:
             continue
         if root not in parents:
+            continue
+        rig_type = config.get("rigify_type") or ""
+        if rig_type in UNIQUE_CHILD_CHAIN_RIG_TYPES:
+            try:
+                names.update(unique_child_chain(root, parents))
+            except ConfigError:
+                pass
             continue
         try:
             operations = infer_rigify_topology([config], parents)

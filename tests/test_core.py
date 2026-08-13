@@ -777,6 +777,75 @@ class ConfigValidationTests(unittest.TestCase):
         }])
         self.assertEqual(names, {"Arm_L", "Elbow_L", "Wrist_L"})
 
+    def test_configured_drive_bones_expand_super_finger_child_chain(self):
+        parents = {
+            "手首.L": None,
+            "人指１.L": "手首.L",
+            "人指２.L": "人指１.L",
+            "人指３.L": "人指２.L",
+            "中指１.L": "手首.L",
+            "中指２.L": "中指１.L",
+        }
+        names = configured_drive_bone_names(
+            [{
+                "bone_name": "人指１.L",
+                "rigify_type": "limbs.super_finger",
+                "chain_bones": [],
+            }],
+            parents,
+        )
+        self.assertEqual(names, {"人指１.L", "人指２.L", "人指３.L"})
+        self.assertNotIn("中指１.L", names)
+        self.assertNotIn("手首.L", names)
+
+    def test_configured_drive_bones_expand_tentacle_and_tail_chains(self):
+        parents = {
+            "Hair_00": None,
+            "Hair_01": "Hair_00",
+            "Hair_02": "Hair_01",
+            "Tail_00": None,
+            "Tail_01": "Tail_00",
+            "Other": None,
+        }
+        names = configured_drive_bone_names(
+            [
+                {
+                    "bone_name": "Hair_00",
+                    "rigify_type": "limbs.simple_tentacle",
+                    "chain_bones": [],
+                },
+                {
+                    "bone_name": "Tail_00",
+                    "rigify_type": "spines.basic_tail",
+                    "chain_bones": [],
+                },
+            ],
+            parents,
+        )
+        self.assertEqual(
+            names,
+            {"Hair_00", "Hair_01", "Hair_02", "Tail_00", "Tail_01"},
+        )
+        self.assertNotIn("Other", names)
+
+    def test_configured_drive_bones_skips_branched_unique_child_chain(self):
+        parents = {
+            "Hair_00": None,
+            "Hair_01": "Hair_00",
+            "Other": "Hair_00",
+        }
+        names = configured_drive_bone_names(
+            [{
+                "bone_name": "Hair_00",
+                "rigify_type": "limbs.simple_tentacle",
+                "chain_bones": [],
+            }],
+            parents,
+        )
+        # Ambiguous unique-child chain: keep the root only.
+        self.assertEqual(names, {"Hair_00"})
+
+
 
 
     def test_infers_common_disconnected_arm_leg_spine_and_head_topology(self):
