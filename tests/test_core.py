@@ -66,6 +66,14 @@ class BoneRuleTests(unittest.TestCase):
         with self.assertRaisesRegex(ConfigError, "super_finger_primary_axis"):
             normalize_compatibility({"super_finger_primary_axis": "Q"})
 
+    def test_super_finger_roll_alignment_defaults_to_auto(self):
+        result = normalize_compatibility({})
+        self.assertEqual(result["super_finger_roll_alignment"], "AUTO")
+
+    def test_super_finger_roll_alignment_rejects_unknown_value(self):
+        with self.assertRaisesRegex(ConfigError, "super_finger_roll_alignment"):
+            normalize_compatibility({"super_finger_roll_alignment": "SIDEWAYS"})
+
     def test_mirror_compatibility_swaps_every_super_finger_axis(self):
         expected = {
             "AUTO": "AUTO", "+X": "-X", "-X": "+X",
@@ -76,6 +84,18 @@ class BoneRuleTests(unittest.TestCase):
                 {"super_finger_primary_axis": source}, lambda value: value,
             )
             self.assertEqual(result["super_finger_primary_axis"], target)
+
+    def test_mirror_preserves_axis_with_global_finger_roll_alignment(self):
+        result = mirror_compatibility({
+            "super_finger_primary_axis": "-X",
+            "super_finger_roll_alignment": "GLOBAL_POS_Z",
+        }, lambda value: value)
+
+        self.assertEqual(result["super_finger_primary_axis"], "-X")
+        self.assertEqual(
+            result["super_finger_roll_alignment"],
+            "GLOBAL_POS_Z",
+        )
 
     def test_non_chain_type_discards_stale_chain_options(self):
         payload = self.valid_payload()
@@ -1325,8 +1345,16 @@ class BuiltInPresetTests(unittest.TestCase):
             "-X",
         )
         self.assertEqual(
+            by_name["人指１.L"]["compatibility"]["super_finger_roll_alignment"],
+            "GLOBAL_POS_Z",
+        )
+        self.assertEqual(
             by_name["親指０.R"]["compatibility"]["super_finger_primary_axis"],
             "-X",
+        )
+        self.assertEqual(
+            by_name["親指０.R"]["compatibility"]["super_finger_roll_alignment"],
+            "GLOBAL_NEG_Y",
         )
         self.assertEqual(
             by_name["腰"]["chain_bones"],

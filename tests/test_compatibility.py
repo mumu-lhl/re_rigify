@@ -159,6 +159,7 @@ class ConnectedChainPlanningTests(unittest.TestCase):
         self.assertEqual(result.bone_names, ("Index_01_L", "Index_03_L"))
         self.assertEqual(result.primary_rotation_axis, "automatic")
         self.assertTrue(result.fix_marker)
+        self.assertEqual(result.roll_alignment, "AUTO")
 
     def test_super_finger_axis_plan_does_not_infer_from_thumb_name(self):
         for side in ("L", "R"):
@@ -237,6 +238,39 @@ class ConnectedChainPlanningTests(unittest.TestCase):
 
         self.assertEqual(result.primary_rotation_axis, "-Y")
         self.assertFalse(result.fix_marker)
+
+    def test_super_finger_axis_plan_preserves_explicit_roll_alignment(self):
+        root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
+        tip = FakeFingerBone("Index_02_L", (1, 0, 0), (2, 0, 0), root)
+        obj = FakeObject([root, tip])
+
+        result = plan_super_finger_axis(obj, {
+            "bone_name": "Index_01_L",
+            "rigify_type": "limbs.super_finger",
+            "chain_bones": ["Index_01_L", "Index_02_L"],
+            "compatibility": {
+                "super_finger_primary_axis": "-X",
+                "super_finger_roll_alignment": "GLOBAL_POS_Z",
+            },
+        })
+
+        self.assertEqual(result.roll_alignment, "GLOBAL_POS_Z")
+
+    def test_explicit_roll_alignment_requires_explicit_primary_axis(self):
+        root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))
+        tip = FakeFingerBone("Index_02_L", (1, 0, 0), (2, 0, 0), root)
+        obj = FakeObject([root, tip])
+
+        with self.assertRaisesRegex(ConfigError, "explicit primary axis"):
+            plan_super_finger_axis(obj, {
+                "bone_name": "Index_01_L",
+                "rigify_type": "limbs.super_finger",
+                "chain_bones": ["Index_01_L", "Index_02_L"],
+                "compatibility": {
+                    "super_finger_primary_axis": "AUTO",
+                    "super_finger_roll_alignment": "GLOBAL_POS_Z",
+                },
+            })
 
     def test_compatibility_plan_includes_super_finger_axis_fix(self):
         root = FakeFingerBone("Index_01_L", (0, 0, 0), (1, 0, 0))

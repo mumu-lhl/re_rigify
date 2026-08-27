@@ -77,12 +77,18 @@ _ZH_HANS_DEFAULT = {
     "Effective Matches": "最终匹配项",
     "Empty Row": "空行",
     "Explicit Chain": "显式链",
+    "explicit finger roll alignment requires an explicit primary axis": (
+        "显式手指扭转轴对齐需要显式主旋转轴"
+    ),
     "Export": "导出",
     "Eye Forward": "眼睛朝向",
     "Force Connected Chain": "强制连接链",
+    "Finger Roll Alignment": "手指扭转轴对齐",
     "Forearm Roll": "前臂扭转骨",
     "Generate & Connect Rigify Rig": "生成并连接 Rigify 绑定",
     "Generated Rigify Rig": "已生成的 Rigify 绑定",
+    "Global +Z": "全局 +Z",
+    "Global -Y": "全局 -Y",
     "Hidden Collections": "隐藏的集合",
     "Hide": "隐藏",
     "Import": "导入",
@@ -111,6 +117,15 @@ _ZH_HANS_DEFAULT = {
     "Parameters save automatically": "参数会自动保存",
     "Primary Rotation Axis": "主旋转轴",
     "Use Rigify's native automatic axis selection": "使用 Rigify 原生的自动轴向选择",
+    "Use Rigify's per-chain automatic roll alignment": (
+        "使用 Rigify 按每条骨链自动对齐扭转轴"
+    ),
+    "Align the finger roll to global positive Z before generation": (
+        "生成前将手指扭转轴对齐到全局正 Z 轴"
+    ),
+    "Align the finger roll to global negative Y before generation": (
+        "生成前将手指扭转轴对齐到全局负 Y 轴"
+    ),
     "Use positive X as the primary rotation axis": "使用 X 正方向作为主旋转轴",
     "Use negative X as the primary rotation axis": "使用 X 负方向作为主旋转轴",
     "Use positive Y as the primary rotation axis": "使用 Y 正方向作为主旋转轴",

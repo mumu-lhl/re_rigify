@@ -94,7 +94,12 @@ def _fk_tweak(fk: str | None = None, tweak: str | None = None, **extra) -> dict:
     return params
 
 
-def _finger(side: str, root: str, *rest: str) -> dict:
+def _finger(
+    side: str,
+    root: str,
+    *rest: str,
+    roll_alignment: str = "GLOBAL_POS_Z",
+) -> dict:
     chain = [f"{root}.{side}", *[f"{name}.{side}" for name in rest]]
     return _bone(
         chain[0],
@@ -103,6 +108,7 @@ def _finger(side: str, root: str, *rest: str) -> dict:
         force_connect=True,
         # MMD finger rolls put automatic/+X curl toward the back of the hand.
         super_finger_primary_axis="-X",
+        super_finger_roll_alignment=roll_alignment,
         parameters=_fk_tweak(tweak=f"Fingers Tweak.{side}"),
     )
 
@@ -165,12 +171,18 @@ def build_mmd_jp_payload() -> dict:
             chain=["足.R", "ひざ.R", "足首.R", "つま先.R", "Extra.R"],
             parameters=_fk_tweak(fk="Leg FK.R", tweak="Leg Tweak.R"),
         ),
-        _finger("L", "親指０", "親指１", "親指２"),
+        _finger(
+            "L", "親指０", "親指１", "親指２",
+            roll_alignment="GLOBAL_NEG_Y",
+        ),
         _finger("L", "人指１", "人指２", "人指３"),
         _finger("L", "中指１", "中指２", "中指３"),
         _finger("L", "薬指１", "薬指２", "薬指３"),
         _finger("L", "小指１", "小指２", "小指３"),
-        _finger("R", "親指０", "親指１", "親指２"),
+        _finger(
+            "R", "親指０", "親指１", "親指２",
+            roll_alignment="GLOBAL_NEG_Y",
+        ),
         _finger("R", "人指１", "人指２", "人指３"),
         _finger("R", "中指１", "中指２", "中指３"),
         _finger("R", "薬指１", "薬指２", "薬指３"),

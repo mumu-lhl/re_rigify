@@ -156,6 +156,21 @@ class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
         ),
         default="AUTO",
     )
+    super_finger_roll_alignment: EnumProperty(
+        name="Finger Roll Alignment",
+        items=(
+            ("AUTO", "Automatic", "Use Rigify's per-chain automatic roll alignment"),
+            (
+                "GLOBAL_POS_Z", "Global +Z",
+                "Align the finger roll to global positive Z before generation",
+            ),
+            (
+                "GLOBAL_NEG_Y", "Global -Y",
+                "Align the finger roll to global negative Y before generation",
+            ),
+        ),
+        default="AUTO",
+    )
     upper_lid_pattern: StringProperty(name="Upper Eyelids")
     lower_lid_pattern: StringProperty(name="Lower Eyelids")
     synthetic_lids_fallback: BoolProperty(name="Synthetic Eyelid Fallback", default=False)
@@ -266,6 +281,7 @@ def _compatibility_from_item(item) -> dict:
         "lower_lid_pattern": item.lower_lid_pattern,
         "synthetic_lids_fallback": item.synthetic_lids_fallback,
         "super_finger_primary_axis": item.super_finger_primary_axis,
+        "super_finger_roll_alignment": item.super_finger_roll_alignment,
     })
 
 

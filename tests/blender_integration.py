@@ -5,6 +5,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import bpy
+from mathutils import Vector
 
 import re_rigify
 from re_rigify.blender_config import armature_to_payload, payload_to_armature
@@ -416,7 +417,41 @@ try:
     )
     assert tuple(finger_source.data.bones["Thumb_03_R"].tail_local) == (0, 0, 3.5)
 
-    for temp in (finger_metarig, auto_metarig, finger_source):
+    roll_metarig = make_armature(
+        "Finger Roll Metarig", ["Index_01_L", "Index_02_L", "Index_03_L"]
+    )
+    bpy.ops.object.mode_set(mode="EDIT")
+    roll_bones = roll_metarig.data.edit_bones
+    roll_bones["Index_01_L"].head = (0, 0, 0)
+    roll_bones["Index_01_L"].tail = (1, 0, 0)
+    roll_bones["Index_02_L"].head = (1, 0, 0)
+    roll_bones["Index_02_L"].tail = (2, 0.05, 0.1)
+    roll_bones["Index_03_L"].head = (2, 0.05, 0.1)
+    roll_bones["Index_03_L"].tail = (2, 0.05, 3.1)
+    roll_bones["Index_02_L"].parent = roll_bones["Index_01_L"]
+    roll_bones["Index_03_L"].parent = roll_bones["Index_02_L"]
+    bpy.ops.object.mode_set(mode="OBJECT")
+    roll_plan = build_compatibility_plan(roll_metarig, [{
+        "bone_name": "Index_01_L",
+        "rigify_type": "limbs.super_finger",
+        "chain_bones": ["Index_01_L", "Index_02_L", "Index_03_L"],
+        "compatibility": {
+            **DEFAULT_COMPATIBILITY,
+            "super_finger_primary_axis": "-X",
+            "super_finger_roll_alignment": "GLOBAL_POS_Z",
+        },
+    }])
+    apply_compatibility_plan(roll_metarig, roll_plan)
+    assert roll_plan.finger_axis_plans[0].fix_marker
+    assert (
+        roll_metarig.pose.bones["Index_01_L"].rigify_parameters.primary_rotation_axis
+        == "-X"
+    )
+    for name in ("Index_01_L", "Index_02_L", "Index_03_L"):
+        z_axis = roll_metarig.data.bones[name].matrix_local.to_3x3().col[2]
+        assert z_axis.dot(Vector((0, 0, 1))) > 0.999
+
+    for temp in (finger_metarig, auto_metarig, finger_source, roll_metarig):
         temp_data = temp.data
         bpy.data.objects.remove(temp, do_unlink=True)
         bpy.data.armatures.remove(temp_data)

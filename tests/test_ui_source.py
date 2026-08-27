@@ -33,6 +33,13 @@ class PanelStructureTests(unittest.TestCase):
             'compatibility.prop(item, "super_finger_primary_axis")',
             ui_source,
         )
+        self.assertIn("super_finger_roll_alignment:", config_source)
+        for alignment in ("AUTO", "GLOBAL_POS_Z", "GLOBAL_NEG_Y"):
+            self.assertIn(f'"{alignment}"', config_source)
+        self.assertIn(
+            'compatibility.prop(item, "super_finger_roll_alignment")',
+            ui_source,
+        )
 
     def test_main_panel_is_available_without_an_armature(self):
         source = Path("re_rigify/ui.py").read_text(encoding="utf-8")

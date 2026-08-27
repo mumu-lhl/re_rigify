@@ -25,10 +25,14 @@ DEFAULT_COMPATIBILITY = {
     "lower_lid_pattern": "",
     "synthetic_lids_fallback": False,
     "super_finger_primary_axis": "AUTO",
+    "super_finger_roll_alignment": "AUTO",
 }
 
 SUPER_FINGER_PRIMARY_AXES = frozenset(
     {"AUTO", "+X", "-X", "+Y", "-Y", "+Z", "-Z"}
+)
+SUPER_FINGER_ROLL_ALIGNMENTS = frozenset(
+    {"AUTO", "GLOBAL_POS_Z", "GLOBAL_NEG_Y"}
 )
 
 EXPLICIT_CHAIN_MIN_LENGTHS = {
@@ -262,6 +266,20 @@ def normalize_compatibility(value: object, path: str = "compatibility") -> dict[
                 )
             )
         result["super_finger_primary_axis"] = axis
+    if "super_finger_roll_alignment" in value:
+        alignment = _require_type(
+            value["super_finger_roll_alignment"],
+            str,
+            f"{path}.super_finger_roll_alignment",
+        )
+        if alignment not in SUPER_FINGER_ROLL_ALIGNMENTS:
+            raise ConfigError(
+                format_iface(
+                    "{path} is invalid",
+                    path=f"{path}.super_finger_roll_alignment",
+                )
+            )
+        result["super_finger_roll_alignment"] = alignment
     return result
 
 
@@ -275,17 +293,18 @@ def mirror_compatibility(value: dict[str, Any], name_mapper) -> dict[str, Any]:
         "+X": "-X",
         "-X": "+X",
     }.get(result["eye_forward_axis"], result["eye_forward_axis"])
-    result["super_finger_primary_axis"] = {
-        "+X": "-X",
-        "-X": "+X",
-        "+Y": "-Y",
-        "-Y": "+Y",
-        "+Z": "-Z",
-        "-Z": "+Z",
-    }.get(
-        result["super_finger_primary_axis"],
-        result["super_finger_primary_axis"],
-    )
+    if result["super_finger_roll_alignment"] == "AUTO":
+        result["super_finger_primary_axis"] = {
+            "+X": "-X",
+            "-X": "+X",
+            "+Y": "-Y",
+            "-Y": "+Y",
+            "+Z": "-Z",
+            "-Z": "+Z",
+        }.get(
+            result["super_finger_primary_axis"],
+            result["super_finger_primary_axis"],
+        )
     return result
 
 

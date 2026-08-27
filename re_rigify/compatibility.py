@@ -68,6 +68,7 @@ class FingerAxisPlan:
     bone_names: tuple[str, ...]
     primary_rotation_axis: str
     fix_marker: bool
+    roll_alignment: str
 
 
 def plan_super_finger_axis(obj, config: dict) -> FingerAxisPlan | None:
@@ -81,6 +82,9 @@ def plan_super_finger_axis(obj, config: dict) -> FingerAxisPlan | None:
         compatibility_axis,
         compatibility_axis,
     )
+    roll_alignment = config.get(
+        "compatibility", {}
+    ).get("super_finger_roll_alignment", "AUTO")
 
     root = config["bone_name"]
     parents = {
@@ -111,9 +115,24 @@ def plan_super_finger_axis(obj, config: dict) -> FingerAxisPlan | None:
         alignment = sum(a * b for a, b in zip(chain_vector, tip_vector))
         alignment /= chain_length * tip_length
         marker_needs_fix = alignment < 0.5 and last.length >= first.length * 1.5
-    if compatibility_axis == "AUTO" and not marker_needs_fix:
+    if (
+        compatibility_axis == "AUTO"
+        and roll_alignment == "AUTO"
+        and not marker_needs_fix
+    ):
         return None
-    return FingerAxisPlan(chain, primary_rotation_axis, marker_needs_fix)
+    if primary_rotation_axis == "automatic" and roll_alignment != "AUTO":
+        raise ConfigError(
+            iface_(
+                "explicit finger roll alignment requires an explicit primary axis"
+            )
+        )
+    return FingerAxisPlan(
+        chain,
+        primary_rotation_axis,
+        marker_needs_fix,
+        roll_alignment,
+    )
 
 
 def resolve_compatibility_drive_map(
@@ -510,17 +529,16 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
         bpy.ops.object.mode_set(mode="OBJECT")
 
     if plan.finger_axis_plans:
-        from rigify.utils.bones import align_chain_x_axis
+        from rigify.utils.bones import align_bone_z_axis, align_chain_x_axis
 
-        marker_plans = [
-            finger_plan
-            for finger_plan in plan.finger_axis_plans
-            if finger_plan.fix_marker
-        ]
-        if marker_plans:
-            bpy.ops.object.mode_set(mode="EDIT")
-            try:
-                for finger_plan in marker_plans:
+        world_roll_axes = {
+            "GLOBAL_POS_Z": Vector((0.0, 0.0, 1.0)),
+            "GLOBAL_NEG_Y": Vector((0.0, -1.0, 0.0)),
+        }
+        bpy.ops.object.mode_set(mode="EDIT")
+        try:
+            for finger_plan in plan.finger_axis_plans:
+                if finger_plan.fix_marker:
                     tip = obj.data.edit_bones[finger_plan.bone_names[-1]]
                     # The long terminal bone is a guide marker, not a real
                     # finger segment. Make it collinear with the preceding
@@ -531,9 +549,18 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
                         direction = tip.head - previous.head
                         if direction.length > 0.0:
                             tip.tail = tip.head + direction.normalized() * tip.length
-                    align_chain_x_axis(obj, list(finger_plan.bone_names))
-            finally:
-                bpy.ops.object.mode_set(mode="OBJECT")
+
+                if finger_plan.roll_alignment == "AUTO":
+                    if finger_plan.fix_marker:
+                        align_chain_x_axis(obj, list(finger_plan.bone_names))
+                    continue
+
+                world_axis = world_roll_axes[finger_plan.roll_alignment]
+                local_axis = obj.matrix_world.to_3x3().inverted() @ world_axis
+                for bone_name in finger_plan.bone_names:
+                    align_bone_z_axis(obj, bone_name, local_axis)
+        finally:
+            bpy.ops.object.mode_set(mode="OBJECT")
 
         for finger_plan in plan.finger_axis_plans:
             parameters = obj.pose.bones[
