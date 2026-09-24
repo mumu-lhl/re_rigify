@@ -1721,8 +1721,12 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                     froot = fchain[0]
                     is_thumb = "親指" in froot or "thumb" in froot.lower()
                     is_mmd = any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in froot)
-                    roll_align = "GLOBAL_NEG_Y" if is_thumb else ("GLOBAL_POS_Z" if is_mmd else "AUTO")
-                    primary_axis = "-X" if is_mmd else "AUTO"
+                    if is_mmd:
+                        roll_align = "GLOBAL_NEG_Y" if is_thumb else "GLOBAL_POS_Z"
+                        primary_axis = "-X"
+                    else:
+                        roll_align = "AUTO"
+                        primary_axis = "AUTO"
                     _set_bone_configuration(
                         settings,
                         froot,
@@ -1747,8 +1751,12 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                             opp_froot = opp_fchain[0]
                             is_thumb = "親指" in opp_froot or "thumb" in opp_froot.lower()
                             is_mmd = any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in opp_froot)
-                            roll_align = "GLOBAL_NEG_Y" if is_thumb else ("GLOBAL_POS_Z" if is_mmd else "AUTO")
-                            primary_axis = "-X" if is_mmd else "AUTO"
+                            if is_mmd:
+                                roll_align = "GLOBAL_NEG_Y" if is_thumb else "GLOBAL_POS_Z"
+                                primary_axis = "-X"
+                            else:
+                                roll_align = "AUTO"
+                                primary_axis = "AUTO"
                             _set_bone_configuration(
                                 settings,
                                 opp_froot,
