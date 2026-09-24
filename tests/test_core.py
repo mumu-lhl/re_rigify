@@ -1204,7 +1204,8 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(by_name["Fingers IK.R"]["row_order"], 1)
         self.assertEqual(by_name["Fingers IK.L"]["ui_title"], "IK")
         self.assertEqual(by_name["Fingers IK.L"]["color_set"], "IK")
-        self.assertTrue(by_name["Fingers IK.L"]["visible_after_generation"])
+        self.assertFalse(by_name["Fingers IK.L"]["visible_after_generation"])
+        self.assertFalse(by_name["Fingers IK.R"]["visible_after_generation"])
 
         self.assertEqual(by_name["Fingers Tweak.L"]["ui_row"], 15)
         self.assertEqual(by_name["Fingers Tweak.R"]["ui_row"], 15)

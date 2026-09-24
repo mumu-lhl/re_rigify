@@ -830,7 +830,7 @@ try:
     assert col_by_name["Fingers Tweak.L"].ui_row == 15
     assert col_by_name["Fingers Tweak.R"].ui_row == 15
     assert col_by_name["Fingers.L"].visible_after_generation is True
-    assert col_by_name["Fingers IK.L"].visible_after_generation is True
+    assert col_by_name["Fingers IK.L"].visible_after_generation is False
     assert col_by_name["Fingers Tweak.L"].visible_after_generation is False
     assert col_by_name["Fingers IK.L"].ui_title == "IK"
     assert col_by_name["Fingers IK.L"].color_set_name == "IK"

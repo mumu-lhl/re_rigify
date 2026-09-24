@@ -1776,7 +1776,7 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                     )
                 _ensure_collection_config(settings, f"Fingers.{side_tag}", "Extra", visible=True, bone_names=selected_sorted)
                 if self.enable_finger_ik:
-                    _ensure_collection_config(settings, f"Fingers IK.{side_tag}", "IK", visible=True)
+                    _ensure_collection_config(settings, f"Fingers IK.{side_tag}", "IK", visible=False)
                 _ensure_collection_config(settings, f"Fingers Tweak.{side_tag}", "Tweak", visible=False)
 
                 if self.mirror_symmetric and side:
@@ -1814,7 +1814,7 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                             )
                         _ensure_collection_config(settings, f"Fingers.{opp_side}", "Extra", visible=True, bone_names=mirrored_all)
                         if self.enable_finger_ik:
-                            _ensure_collection_config(settings, f"Fingers IK.{opp_side}", "IK", visible=True)
+                            _ensure_collection_config(settings, f"Fingers IK.{opp_side}", "IK", visible=False)
                         _ensure_collection_config(settings, f"Fingers Tweak.{opp_side}", "Tweak", visible=False)
 
         active_name = selected_sorted[0]

@@ -965,7 +965,7 @@ def arrange_collection_layout(collections: list[dict]) -> list[dict]:
                 tweak_row = 15 if has_finger_ik else 14
                 return tweak_row, (side_idx, name), "Tweak", "Tweak", False
             elif is_ik:
-                return 14, (side_idx, name), "IK", "IK", True
+                return 14, (side_idx, name), "IK", "IK", False
             else:
                 return 13, (side_idx, name), name, "Extra", True
         else:
