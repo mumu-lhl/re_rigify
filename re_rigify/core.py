@@ -903,10 +903,17 @@ def arrange_collection_layout(collections: list[dict]) -> list[dict]:
     - Row 14: Fingers Tweak.L, Fingers Tweak.R
     - Row 15+: Other collections
     """
+    has_finger_ik = any(
+        any(k in c.get("name", "").lower() for k in ("finger", "指", "thumb", "index", "pinky", "ring"))
+        and bool(re.search(r"(?:^|[\s._-])IK(?:$|[\s._-])", c.get("name", "").upper()))
+        for c in collections
+    )
+
     def categorize(name: str):
         upper = name.upper()
         lower = name.lower()
         is_fk = bool(re.search(r"(?:^|[\s._-])FK(?:$|[\s._-])", upper))
+        is_ik = bool(re.search(r"(?:^|[\s._-])IK(?:$|[\s._-])", upper))
         is_tweak = "TWEAK" in upper
 
         if re.search(r"(?:^|[\s._-])L(?:$|[\s._-])", upper) or "左" in name or "left" in lower:
@@ -955,7 +962,10 @@ def arrange_collection_layout(collections: list[dict]) -> list[dict]:
                 return 9, (side_idx, name), name, "IK", True
         elif any(k in lower for k in ("finger", "指", "thumb", "index", "pinky", "ring")):
             if is_tweak:
-                return 14, (side_idx, name), "Tweak", "Tweak", False
+                tweak_row = 15 if has_finger_ik else 14
+                return tweak_row, (side_idx, name), "Tweak", "Tweak", False
+            elif is_ik:
+                return 14, (side_idx, name), "IK", "IK", True
             else:
                 return 13, (side_idx, name), name, "Extra", True
         else:

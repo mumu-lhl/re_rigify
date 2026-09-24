@@ -1181,6 +1181,38 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(by_name["Arm Tweak.L"]["color_set"], "Tweak")
         self.assertEqual(by_name["Fingers.L"]["color_set"], "Extra")
 
+    def test_arrange_collection_layout_with_finger_ik(self):
+        cols = [
+            {"name": "Fingers.L"},
+            {"name": "Fingers.R"},
+            {"name": "Fingers IK.L"},
+            {"name": "Fingers IK.R"},
+            {"name": "Fingers Tweak.L"},
+            {"name": "Fingers Tweak.R"},
+        ]
+        arranged = arrange_collection_layout(cols)
+        by_name = {c["name"]: c for c in arranged}
+
+        self.assertEqual(by_name["Fingers.L"]["ui_row"], 13)
+        self.assertEqual(by_name["Fingers.R"]["ui_row"], 13)
+        self.assertEqual(by_name["Fingers.L"]["row_order"], 0)
+        self.assertEqual(by_name["Fingers.R"]["row_order"], 1)
+
+        self.assertEqual(by_name["Fingers IK.L"]["ui_row"], 14)
+        self.assertEqual(by_name["Fingers IK.R"]["ui_row"], 14)
+        self.assertEqual(by_name["Fingers IK.L"]["row_order"], 0)
+        self.assertEqual(by_name["Fingers IK.R"]["row_order"], 1)
+        self.assertEqual(by_name["Fingers IK.L"]["ui_title"], "IK")
+        self.assertEqual(by_name["Fingers IK.L"]["color_set"], "IK")
+        self.assertTrue(by_name["Fingers IK.L"]["visible_after_generation"])
+
+        self.assertEqual(by_name["Fingers Tweak.L"]["ui_row"], 15)
+        self.assertEqual(by_name["Fingers Tweak.R"]["ui_row"], 15)
+        self.assertEqual(by_name["Fingers Tweak.L"]["row_order"], 0)
+        self.assertEqual(by_name["Fingers Tweak.R"]["row_order"], 1)
+        self.assertEqual(by_name["Fingers Tweak.L"]["ui_title"], "Tweak")
+        self.assertFalse(by_name["Fingers Tweak.L"]["visible_after_generation"])
+
     def test_resolve_collection_rules_can_allow_missing_exact(self):
         resolved = resolve_collection_rules(
             ["足.L", "ひざ.L", "足首.L", "つま先.L"],

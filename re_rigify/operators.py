@@ -1494,6 +1494,27 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
         description="Automatically configure opposite side if symmetric (.L/.R)",
         default=True,
     )
+    finger_preset: EnumProperty(
+        name="Finger Curl Preset",
+        items=(
+            ("MMR", "MMR Style (-X Curl)", "Align rolls to Global +Z/-Y with -X primary axis for natural fist curling on scale down"),
+            ("AUTO", "Keep Original (AUTO)", "Keep original bone rolls and automatic rotation axis"),
+        ),
+        default="MMR",
+    )
+    enable_finger_ik: BoolProperty(
+        name="Enable Finger IK",
+        description="Generate fingertip IK controls with FK/IK sliders and snapping",
+        default=True,
+    )
+    thumb_roll_alignment: EnumProperty(
+        name="Thumb Roll Alignment",
+        items=(
+            ("GLOBAL_NEG_Y", "Global -Y (MMR Default)", "Align thumb roll to Global -Y for natural inward opposition curl"),
+            ("GLOBAL_POS_Z", "Global +Z", "Align thumb roll to Global +Z (same as other fingers)"),
+        ),
+        default="GLOBAL_NEG_Y",
+    )
 
     def invoke(self, context, _event):
         obj = active_armature(context)
@@ -1529,6 +1550,13 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
         layout.prop(self, "body_part")
         if self.body_part in {"ARM", "LEG", "FINGER"}:
             layout.prop(self, "mirror_symmetric")
+        if self.body_part == "FINGER":
+            box = layout.box()
+            box.label(text=iface_("Finger Options"), icon="HAND")
+            box.prop(self, "finger_preset")
+            if self.finger_preset == "MMR":
+                box.prop(self, "thumb_roll_alignment")
+            box.prop(self, "enable_finger_ik")
         obj = active_armature(context)
         selected = _get_selected_bones(context, obj) if obj else []
         box = layout.box()
@@ -1719,28 +1747,36 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                 chains = _partition_finger_chains(selected_sorted, parents)
                 for fchain in chains:
                     froot = fchain[0]
-                    is_thumb = "親指" in froot or "thumb" in froot.lower()
-                    is_mmd = any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in froot)
-                    if is_mmd:
-                        roll_align = "GLOBAL_NEG_Y" if is_thumb else "GLOBAL_POS_Z"
+                    is_thumb = "親指" in froot or "thumb" in froot.lower() or "拇指" in froot
+                    if self.finger_preset == "MMR":
+                        roll_align = self.thumb_roll_alignment if is_thumb else "GLOBAL_POS_Z"
                         primary_axis = "-X"
                     else:
                         roll_align = "AUTO"
                         primary_axis = "AUTO"
+
+                    params = {
+                        "tweak_coll_refs": [f"Fingers Tweak.{side_tag}"],
+                        "tweak_layers_extra": True,
+                    }
+                    if self.enable_finger_ik:
+                        params["make_extra_ik_control"] = True
+                        params["extra_ik_coll_refs"] = [f"Fingers IK.{side_tag}"]
+                        params["extra_ik_layers_extra"] = True
+
                     _set_bone_configuration(
                         settings,
                         froot,
                         "limbs.super_finger",
                         chain=fchain,
-                        parameters={
-                            "tweak_coll_refs": [f"Fingers Tweak.{side_tag}"],
-                            "tweak_layers_extra": True,
-                        },
+                        parameters=params,
                         force_connect_chain=True,
                         super_finger_primary_axis=primary_axis,
                         super_finger_roll_alignment=roll_align,
                     )
                 _ensure_collection_config(settings, f"Fingers.{side_tag}", "Extra", visible=True, bone_names=selected_sorted)
+                if self.enable_finger_ik:
+                    _ensure_collection_config(settings, f"Fingers IK.{side_tag}", "IK", visible=True)
                 _ensure_collection_config(settings, f"Fingers Tweak.{side_tag}", "Tweak", visible=False)
 
                 if self.mirror_symmetric and side:
@@ -1749,28 +1785,36 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                         for fchain in chains:
                             opp_fchain = [mirror_name(b) for b in fchain]
                             opp_froot = opp_fchain[0]
-                            is_thumb = "親指" in opp_froot or "thumb" in opp_froot.lower()
-                            is_mmd = any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in opp_froot)
-                            if is_mmd:
-                                roll_align = "GLOBAL_NEG_Y" if is_thumb else "GLOBAL_POS_Z"
+                            is_thumb = "親指" in opp_froot or "thumb" in opp_froot.lower() or "拇指" in opp_froot
+                            if self.finger_preset == "MMR":
+                                roll_align = self.thumb_roll_alignment if is_thumb else "GLOBAL_POS_Z"
                                 primary_axis = "-X"
                             else:
                                 roll_align = "AUTO"
                                 primary_axis = "AUTO"
+
+                            params = {
+                                "tweak_coll_refs": [f"Fingers Tweak.{opp_side}"],
+                                "tweak_layers_extra": True,
+                            }
+                            if self.enable_finger_ik:
+                                params["make_extra_ik_control"] = True
+                                params["extra_ik_coll_refs"] = [f"Fingers IK.{opp_side}"]
+                                params["extra_ik_layers_extra"] = True
+
                             _set_bone_configuration(
                                 settings,
                                 opp_froot,
                                 "limbs.super_finger",
                                 chain=opp_fchain,
-                                parameters={
-                                    "tweak_coll_refs": [f"Fingers Tweak.{opp_side}"],
-                                    "tweak_layers_extra": True,
-                                },
+                                parameters=params,
                                 force_connect_chain=True,
                                 super_finger_primary_axis=primary_axis,
                                 super_finger_roll_alignment=roll_align,
                             )
                         _ensure_collection_config(settings, f"Fingers.{opp_side}", "Extra", visible=True, bone_names=mirrored_all)
+                        if self.enable_finger_ik:
+                            _ensure_collection_config(settings, f"Fingers IK.{opp_side}", "IK", visible=True)
                         _ensure_collection_config(settings, f"Fingers Tweak.{opp_side}", "Tweak", visible=False)
 
         active_name = selected_sorted[0]

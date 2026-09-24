@@ -788,8 +788,12 @@ try:
     bones_by_name = {b.bone_name: b for b in quick_arm.data.re_rigify.bones}
     assert bones_by_name["index.01.L"].rigify_type == "limbs.super_finger"
     assert [b.bone_name for b in bones_by_name["index.01.L"].chain_bones] == ["index.01.L", "index.02.L", "index.03.L"]
+    assert bones_by_name["index.01.L"].super_finger_primary_axis == "-X"
+    assert bones_by_name["index.01.L"].super_finger_roll_alignment == "GLOBAL_POS_Z"
     assert bones_by_name["index.01.R"].rigify_type == "limbs.super_finger"
     assert [b.bone_name for b in bones_by_name["index.01.R"].chain_bones] == ["index.01.R", "index.02.R", "index.03.R"]
+    assert bones_by_name["index.01.R"].super_finger_primary_axis == "-X"
+    assert bones_by_name["index.01.R"].super_finger_roll_alignment == "GLOBAL_POS_Z"
 
     assert bpy.ops.re_rigify.arrange_collection_ui() == {"FINISHED"}
     col_by_name = {c.name: c for c in quick_arm.data.re_rigify.collections}
@@ -821,10 +825,15 @@ try:
     assert col_by_name["Leg Tweak.L"].ui_title == "Tweak"
     assert col_by_name["Fingers.L"].ui_row == 13
     assert col_by_name["Fingers.R"].ui_row == 13
-    assert col_by_name["Fingers Tweak.L"].ui_row == 14
-    assert col_by_name["Fingers Tweak.R"].ui_row == 14
+    assert col_by_name["Fingers IK.L"].ui_row == 14
+    assert col_by_name["Fingers IK.R"].ui_row == 14
+    assert col_by_name["Fingers Tweak.L"].ui_row == 15
+    assert col_by_name["Fingers Tweak.R"].ui_row == 15
     assert col_by_name["Fingers.L"].visible_after_generation is True
+    assert col_by_name["Fingers IK.L"].visible_after_generation is True
     assert col_by_name["Fingers Tweak.L"].visible_after_generation is False
+    assert col_by_name["Fingers IK.L"].ui_title == "IK"
+    assert col_by_name["Fingers IK.L"].color_set_name == "IK"
     assert col_by_name["Fingers Tweak.L"].ui_title == "Tweak"
 finally:
     re_rigify.unregister()
