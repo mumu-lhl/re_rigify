@@ -167,6 +167,15 @@ def apply_rigify_topology(context, obj: bpy.types.Object, bones: list[dict]) -> 
         return
     bpy.ops.object.mode_set(mode="EDIT")
     apply_connection_operations(obj.data.edit_bones, operations)
+    for config in bones:
+        explicit_chain = config.get("chain_bones") or []
+        if explicit_chain:
+            rig_type = config.get("rigify_type")
+            term_name = explicit_chain[:4][-1] if rig_type == "limbs.leg" else explicit_chain[-1]
+            term_bone = obj.data.edit_bones.get(term_name)
+            if term_bone:
+                for child in term_bone.children:
+                    child.use_connect = False
     bpy.ops.object.mode_set(mode="OBJECT")
 
 

@@ -216,6 +216,9 @@ def apply_connection_operations(edit_bones, connections) -> None:
         child.parent = parent
         if connected:
             parent.tail = child_head
+            for other_child in getattr(parent, "children", ()):
+                if other_child != child and getattr(other_child, "use_connect", False):
+                    other_child.use_connect = False
         child.use_connect = connected
 
 
