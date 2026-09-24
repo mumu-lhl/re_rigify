@@ -432,9 +432,16 @@ def register() -> None:
 
 
 def unregister() -> None:
-    del bpy.types.Object.re_rigify_source_armature
-    del bpy.types.Object.re_rigify_metarig
-    del bpy.types.Object.re_rigify_generated_rig
-    del bpy.types.Armature.re_rigify
+    if hasattr(bpy.types.Object, "re_rigify_source_armature"):
+        del bpy.types.Object.re_rigify_source_armature
+    if hasattr(bpy.types.Object, "re_rigify_metarig"):
+        del bpy.types.Object.re_rigify_metarig
+    if hasattr(bpy.types.Object, "re_rigify_generated_rig"):
+        del bpy.types.Object.re_rigify_generated_rig
+    if hasattr(bpy.types.Armature, "re_rigify"):
+        del bpy.types.Armature.re_rigify
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass

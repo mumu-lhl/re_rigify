@@ -5,6 +5,7 @@ from re_rigify.core import (
     ConfigError,
     DEFAULT_COMPATIBILITY,
     EXPLICIT_CHAIN_MIN_LENGTHS,
+    arrange_collection_layout,
     choose_drive_spec,
     choose_drive_target,
     configured_drive_bone_names,
@@ -954,7 +955,7 @@ class ConfigValidationTests(unittest.TestCase):
             ("Foot_L", "Toe_L", True),
             ("Foot_L", "Heel_L", False),
         ])
-        self.assertEqual(EXPLICIT_CHAIN_MIN_LENGTHS["limbs.leg"], 4)
+        self.assertEqual(EXPLICIT_CHAIN_MIN_LENGTHS["limbs.leg"], 3)
 
     def test_explicit_leg_chain_omits_heel_when_not_listed(self):
         parents = {
@@ -1062,6 +1063,123 @@ class ConfigValidationTests(unittest.TestCase):
         self.assertEqual(len(plans), 1)
         self.assertEqual(plans[0]["name"], "Thigh_L_heel")
         self.assertEqual(plans[0]["parent"], "Foot_L")
+
+    def test_plan_missing_leg_heels_for_3_bone_leg(self):
+        bones = {
+            "Thigh_L": {"head": (0.1, 0.0, 1.0), "tail": (0.1, 0.0, 0.6)},
+            "Knee_L": {"head": (0.1, 0.0, 0.6), "tail": (0.1, 0.0, 0.2)},
+            "Foot_L": {"head": (0.1, 0.0, 0.2), "tail": (0.1, -0.08, 0.05)},
+        }
+        configs = [{
+            "bone_name": "Thigh_L",
+            "rigify_type": "limbs.leg",
+            "chain_bones": ["Thigh_L", "Knee_L", "Foot_L"],
+        }]
+
+        plans = plan_missing_leg_heels(configs, bones)
+
+        self.assertEqual(len(plans), 2)
+        # 1st is toe marker (connected to Foot_L)
+        toe_plan = plans[0]
+        self.assertEqual(toe_plan["name"], "Thigh_L_toe")
+        self.assertEqual(toe_plan["parent"], "Foot_L")
+        self.assertTrue(toe_plan["use_connect"])
+        self.assertEqual(toe_plan["head"], bones["Foot_L"]["tail"])
+        # 2nd is heel marker (unconnected child of Foot_L)
+        heel_plan = plans[1]
+        self.assertEqual(heel_plan["name"], "Thigh_L_heel")
+        self.assertEqual(heel_plan["parent"], "Foot_L")
+        self.assertFalse(heel_plan["use_connect"])
+
+    def test_arrange_collection_layout_standard_human(self):
+        cols = [
+            {"name": "Arm FK.R"},
+            {"name": "Leg.L"},
+            {"name": "Arm Tweak.L"},
+            {"name": "Root"},
+            {"name": "Torso Tweak"},
+            {"name": "Arm.R"},
+            {"name": "Leg FK.L"},
+            {"name": "Head Tweak"},
+            {"name": "Fingers.L"},
+            {"name": "Leg Tweak.R"},
+            {"name": "Torso FK"},
+            {"name": "Arm.L"},
+            {"name": "Fingers Tweak.L"},
+            {"name": "Head"},
+            {"name": "Arm FK.L"},
+            {"name": "Torso"},
+            {"name": "Leg.R"},
+            {"name": "Arm Tweak.R"},
+            {"name": "Fingers.R"},
+            {"name": "Leg FK.R"},
+            {"name": "Fingers Tweak.R"},
+            {"name": "Leg Tweak.L"},
+        ]
+        arranged = arrange_collection_layout(cols)
+        by_name = {c["name"]: c for c in arranged}
+
+        # Check rows
+        self.assertEqual(by_name["Root"]["ui_row"], 1)
+        self.assertEqual(by_name["Torso"]["ui_row"], 1)
+        self.assertEqual(by_name["Torso FK"]["ui_row"], 2)
+        self.assertEqual(by_name["Torso Tweak"]["ui_row"], 2)
+        self.assertEqual(by_name["Head"]["ui_row"], 3)
+        self.assertEqual(by_name["Head Tweak"]["ui_row"], 3)
+        # Empty row 4
+        self.assertNotIn(4, {c["ui_row"] for c in arranged})
+        # Arm: 5, 6, 7
+        self.assertEqual(by_name["Arm.L"]["ui_row"], 5)
+        self.assertEqual(by_name["Arm.R"]["ui_row"], 5)
+        self.assertEqual(by_name["Arm FK.L"]["ui_row"], 6)
+        self.assertEqual(by_name["Arm FK.R"]["ui_row"], 6)
+        self.assertEqual(by_name["Arm Tweak.L"]["ui_row"], 7)
+        self.assertEqual(by_name["Arm Tweak.R"]["ui_row"], 7)
+        # Empty row 8
+        self.assertNotIn(8, {c["ui_row"] for c in arranged})
+        # Leg: 9, 10, 11
+        self.assertEqual(by_name["Leg.L"]["ui_row"], 9)
+        self.assertEqual(by_name["Leg.R"]["ui_row"], 9)
+        self.assertEqual(by_name["Leg FK.L"]["ui_row"], 10)
+        self.assertEqual(by_name["Leg FK.R"]["ui_row"], 10)
+        self.assertEqual(by_name["Leg Tweak.L"]["ui_row"], 11)
+        self.assertEqual(by_name["Leg Tweak.R"]["ui_row"], 11)
+        # Empty row 12
+        self.assertNotIn(12, {c["ui_row"] for c in arranged})
+        # Fingers: 13, 14
+        self.assertEqual(by_name["Fingers.L"]["ui_row"], 13)
+        self.assertEqual(by_name["Fingers.R"]["ui_row"], 13)
+        self.assertEqual(by_name["Fingers Tweak.L"]["ui_row"], 14)
+        self.assertEqual(by_name["Fingers Tweak.R"]["ui_row"], 14)
+
+        # Check L before R ordering
+        self.assertEqual(by_name["Arm.L"]["row_order"], 0)
+        self.assertEqual(by_name["Arm.R"]["row_order"], 1)
+        self.assertEqual(by_name["Leg.L"]["row_order"], 0)
+        self.assertEqual(by_name["Leg.R"]["row_order"], 1)
+
+        # Check button titles
+        self.assertEqual(by_name["Arm FK.L"]["ui_title"], "FK")
+        self.assertEqual(by_name["Arm Tweak.L"]["ui_title"], "Tweak")
+        self.assertEqual(by_name["Arm.L"]["ui_title"], "Arm.L")
+
+        # Check visibility: main=True, FK/Tweak=False
+        self.assertTrue(by_name["Root"]["visible_after_generation"])
+        self.assertTrue(by_name["Torso"]["visible_after_generation"])
+        self.assertTrue(by_name["Arm.L"]["visible_after_generation"])
+        self.assertFalse(by_name["Arm FK.L"]["visible_after_generation"])
+        self.assertFalse(by_name["Arm Tweak.L"]["visible_after_generation"])
+        self.assertFalse(by_name["Torso FK"]["visible_after_generation"])
+        self.assertFalse(by_name["Torso Tweak"]["visible_after_generation"])
+        self.assertFalse(by_name["Fingers Tweak.L"]["visible_after_generation"])
+
+        # Check color sets
+        self.assertEqual(by_name["Root"]["color_set"], "Root")
+        self.assertEqual(by_name["Torso"]["color_set"], "Special")
+        self.assertEqual(by_name["Arm.L"]["color_set"], "IK")
+        self.assertEqual(by_name["Arm FK.L"]["color_set"], "FK")
+        self.assertEqual(by_name["Arm Tweak.L"]["color_set"], "Tweak")
+        self.assertEqual(by_name["Fingers.L"]["color_set"], "Extra")
 
     def test_resolve_collection_rules_can_allow_missing_exact(self):
         resolved = resolve_collection_rules(

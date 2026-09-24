@@ -37,7 +37,7 @@ SUPER_FINGER_ROLL_ALIGNMENTS = frozenset(
 
 EXPLICIT_CHAIN_MIN_LENGTHS = {
     "limbs.arm": 3,
-    "limbs.leg": 4,
+    "limbs.leg": 3,
     "limbs.super_finger": 2,
     "limbs.simple_tentacle": 2,
     "limbs.spline_tentacle": 2,
@@ -716,6 +716,25 @@ def infer_rigify_topology(
             operations.append((root, head, True))
     return operations
 
+def _toe_marker_geometry(
+    foot: dict[str, Any],
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Build a short connected toe marker extending forward from the foot bone tail."""
+    foot_head = tuple(float(v) for v in foot["head"])
+    foot_tail = tuple(float(v) for v in foot["tail"])
+    dx = foot_tail[0] - foot_head[0]
+    dy = foot_tail[1] - foot_head[1]
+    dz = foot_tail[2] - foot_head[2]
+    foot_len = sum((a - b) ** 2 for a, b in zip(foot_head, foot_tail)) ** 0.5
+    if foot_len < 1e-4:
+        dx, dy, dz, foot_len = 0.0, -0.1, 0.0, 0.1
+    toe_len = max(foot_len * 0.4, 0.04)
+    scale = toe_len / foot_len
+    head = foot_tail
+    tail = (foot_tail[0] + dx * scale, foot_tail[1] + dy * scale, foot_tail[2] + dz * scale)
+    return head, tail
+
+
 def _heel_marker_geometry(
     foot: dict[str, Any],
     toe: dict[str, Any],
@@ -741,11 +760,11 @@ def plan_missing_leg_heels(
     bones: dict[str, dict[str, Any]],
     parents: dict[str, str | None] | None = None,
 ) -> list[dict[str, Any]]:
-    """Plan temporary heel markers for limbs.leg when the source has none.
+    """Plan temporary heel (and toe if needed) markers for limbs.leg when the source has none.
 
-    Rigify requires an unconnected heel under the foot. Re-Rigify keeps the
-    source armature unchanged and only materializes these bones on the
-    temporary metarig copy.
+    Rigify requires an unconnected heel under the foot, and at least 4 main chain
+    bones (thigh->knee->foot->toe). Re-Rigify keeps the source armature unchanged
+    and only materializes these bones on the temporary metarig copy.
     """
     parent_map = dict(parents or {})
     children: dict[str, list[str]] = {name: [] for name in parent_map}
@@ -790,16 +809,33 @@ def plan_missing_leg_heels(
         foot_name = None
         toe_name = None
         heel_name = None
+        toe_dict = None
 
         if explicit_chain:
-            if len(explicit_chain) < 4:
+            if len(explicit_chain) < 3:
                 continue
             foot_name = explicit_chain[2]
-            toe_name = explicit_chain[3]
-            if len(explicit_chain) >= 5:
-                heel_name = explicit_chain[4]
-            else:
+            if len(explicit_chain) == 3:
+                if foot_name in bones:
+                    toe_name = unique_blender_name(f"{root}_toe", used_names)
+                    toe_head, toe_tail = _toe_marker_geometry(bones[foot_name])
+                    plans.append({
+                        "name": toe_name,
+                        "parent": foot_name,
+                        "head": toe_head,
+                        "tail": toe_tail,
+                        "use_connect": True,
+                    })
+                    used_names.add(toe_name)
+                    toe_dict = {"head": toe_head, "tail": toe_tail}
                 heel_name = unique_blender_name(f"{root}_heel", used_names)
+            else:
+                toe_name = explicit_chain[3]
+                toe_dict = bones.get(toe_name)
+                if len(explicit_chain) >= 5:
+                    heel_name = explicit_chain[4]
+                else:
+                    heel_name = unique_blender_name(f"{root}_heel", used_names)
         else:
             knee = find(root, ("knee", "shin", "lower_leg", "ひざ"))
             foot_name = (
@@ -807,6 +843,7 @@ def plan_missing_leg_heels(
                 if knee else None
             )
             toe_name = find(foot_name, ("toe", "つま先")) if foot_name else None
+            toe_dict = bones.get(toe_name) if toe_name else None
             heel_name = None
             if knee and foot_name and toe_name:
                 heel_name = find(knee, ("heel", "extra"), exclude={foot_name, toe_name})
@@ -830,10 +867,10 @@ def plan_missing_leg_heels(
             continue
         if heel_name in bones:
             continue
-        if foot_name not in bones or toe_name not in bones:
+        if foot_name not in bones or toe_dict is None:
             continue
 
-        head, tail = _heel_marker_geometry(bones[foot_name], bones[toe_name])
+        head, tail = _heel_marker_geometry(bones[foot_name], toe_dict)
         plans.append({
             "name": heel_name,
             "parent": foot_name,
@@ -844,6 +881,108 @@ def plan_missing_leg_heels(
         used_names.add(heel_name)
 
     return plans
+
+
+def arrange_collection_layout(collections: list[dict]) -> list[dict]:
+    """Arrange bone collections into standard categorized UI rows.
+
+    Layout rules from Re-Rigify convention:
+    - Row 1: Root, Torso
+    - Row 2: Torso FK, Torso Tweak
+    - Row 3: Head, Face, Head Tweak
+    - Row 4: <empty>
+    - Row 5: Arm.L, Arm.R
+    - Row 6: Arm FK.L, Arm FK.R
+    - Row 7: Arm Tweak.L, Arm Tweak.R
+    - Row 8: <empty>
+    - Row 9: Leg.L, Leg.R
+    - Row 10: Leg FK.L, Leg FK.R
+    - Row 11: Leg Tweak.L, Leg Tweak.R
+    - Row 12: <empty>
+    - Row 13: Fingers.L, Fingers.R
+    - Row 14: Fingers Tweak.L, Fingers Tweak.R
+    - Row 15+: Other collections
+    """
+    def categorize(name: str):
+        upper = name.upper()
+        lower = name.lower()
+        is_fk = bool(re.search(r"(?:^|[\s._-])FK(?:$|[\s._-])", upper))
+        is_tweak = "TWEAK" in upper
+
+        if re.search(r"(?:^|[\s._-])L(?:$|[\s._-])", upper) or "左" in name or "left" in lower:
+            side_idx = 0
+        elif re.search(r"(?:^|[\s._-])R(?:$|[\s._-])", upper) or "右" in name or "right" in lower:
+            side_idx = 1
+        else:
+            side_idx = 2
+
+        if (
+            lower == "root"
+            or lower in {"root", "center", "全ての親"}
+            or (("root" in lower or "center" in lower) and not is_fk and not is_tweak)
+        ):
+            return 1, (0, side_idx, name), "Root", "Root", True
+        elif any(k in lower for k in ("torso", "spine", "腰", "上半身", "下半身")):
+            if is_fk:
+                return 2, (0, side_idx, name), "FK", "FK", False
+            elif is_tweak:
+                return 2, (1, side_idx, name), "Tweak", "Tweak", False
+            else:
+                return 1, (1, side_idx, name), "Torso", "Special", True
+        elif any(k in lower for k in ("head", "neck", "首", "頭")):
+            if is_tweak:
+                return 3, (2, side_idx, name), "Tweak", "Tweak", False
+            else:
+                return 3, (0, side_idx, name), "Head", "Special", True
+        elif any(k in lower for k in ("face", "顔", "目", "eye")):
+            if is_tweak:
+                return 3, (2, side_idx, name), "Tweak", "Tweak", False
+            else:
+                return 3, (1, side_idx, name), "Face", "Special", True
+        elif any(k in lower for k in ("arm", "hand", "肩", "腕", "手首")):
+            if is_fk:
+                return 6, (side_idx, name), "FK", "FK", False
+            elif is_tweak:
+                return 7, (side_idx, name), "Tweak", "Tweak", False
+            else:
+                return 5, (side_idx, name), name, "IK", True
+        elif any(k in lower for k in ("leg", "foot", "足", "thigh", "shin", "knee")):
+            if is_fk:
+                return 10, (side_idx, name), "FK", "FK", False
+            elif is_tweak:
+                return 11, (side_idx, name), "Tweak", "Tweak", False
+            else:
+                return 9, (side_idx, name), name, "IK", True
+        elif any(k in lower for k in ("finger", "指", "thumb", "index", "pinky", "ring")):
+            if is_tweak:
+                return 14, (side_idx, name), "Tweak", "Tweak", False
+            else:
+                return 13, (side_idx, name), name, "Extra", True
+        else:
+            vis = not (is_fk or is_tweak)
+            color = "FK" if is_fk else ("Tweak" if is_tweak else "Special")
+            return 16, (side_idx, name), name, color, vis
+
+    rows: dict[int, list[tuple[Any, dict]]] = {}
+    for col in collections:
+        item = deepcopy(col)
+        name = item.get("name", "")
+        row_id, sort_key, title, color_set, visible = categorize(name)
+        item["ui_row"] = row_id
+        item["ui_title"] = title
+        item["color_set"] = item.get("color_set") or color_set
+        item["visible_after_generation"] = visible
+        rows.setdefault(row_id, []).append((sort_key, item))
+
+    result = []
+    for row_id in sorted(rows.keys()):
+        items_in_row = rows[row_id]
+        items_in_row.sort(key=lambda pair: pair[0])
+        for order, (_sort_key, item) in enumerate(items_in_row):
+            item["row_order"] = order
+            result.append(item)
+
+    return result
 
 
 

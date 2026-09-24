@@ -411,6 +411,19 @@ class PanelStructureTests(unittest.TestCase):
             "RERIGIFY_OT_ChainMove",
         }.issubset(operator_classes))
 
+    def test_quick_human_setup_and_arrange_ui_buttons_and_operators(self):
+        operator_source = Path("re_rigify/operators.py").read_text(encoding="utf-8")
+        operator_tree = ast.parse(operator_source)
+        operator_classes = {
+            node.name for node in operator_tree.body if isinstance(node, ast.ClassDef)
+        }
+        self.assertIn("RERIGIFY_OT_QuickSetupBones", operator_classes)
+        self.assertIn("RERIGIFY_OT_ArrangeCollectionUI", operator_classes)
+
+        ui_source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
+        self.assertIn('"re_rigify.quick_setup_bones"', ui_source)
+        self.assertGreaterEqual(ui_source.count('"re_rigify.arrange_collection_ui"'), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import bpy
@@ -17,10 +18,12 @@ from .blender_config import (
     chain_bones_from_item,
     payload_to_armature,
     suspend_carrier_updates,
+    suspend_collection_rename_updates,
 )
 from .core import (
     ConfigError,
     RIGIFY_DEFAULT_COLOR_SETS,
+    arrange_collection_layout,
     materialize_bone_rules,
     mirror_compatibility,
     mirror_parameter_value,
@@ -46,7 +49,8 @@ def active_armature(context):
 def select_only(context, obj):
     """Select one object without invoking context-sensitive selection operators."""
     for candidate in context.view_layer.objects:
-        candidate.select_set(False)
+        if candidate is not None:
+            candidate.select_set(False)
     obj.hide_set(False)
     obj.hide_select = False
     obj.select_set(True)
@@ -1337,6 +1341,503 @@ class RERIGIFY_OT_RemoveDrive(bpy.types.Operator):
         return {"FINISHED"}
 
 
+def _get_selected_bones(context, obj) -> list[str]:
+    if not obj or obj.type != "ARMATURE":
+        return []
+    if obj.mode == "EDIT":
+        ordered_bones = list(obj.data.edit_bones)
+        selected_names = {bone.name for bone in ordered_bones if bone.select}
+        active = obj.data.edit_bones.active
+    elif obj.mode == "POSE":
+        ordered_bones = list(obj.data.bones)
+        selected_names = {
+            bone.name for bone in (context.selected_pose_bones or ())
+            if bone.id_data == obj
+        }
+        active = context.active_pose_bone
+    else:
+        ordered_bones = list(obj.data.bones)
+        selected_names = set()
+        active = obj.data.bones.active
+
+    if not selected_names and active is not None:
+        selected_names = {active.name}
+    return [bone.name for bone in ordered_bones if bone.name in selected_names]
+
+
+def _topological_sort_bones(bone_names: list[str], parents: dict[str, str | None]) -> list[str]:
+    def get_depth(name: str) -> int:
+        depth = 0
+        curr = parents.get(name)
+        seen = {name}
+        while curr and curr not in seen:
+            seen.add(curr)
+            depth += 1
+            curr = parents.get(curr)
+        return depth
+
+    return sorted(bone_names, key=lambda b: (get_depth(b), b))
+
+
+def _partition_finger_chains(bone_names: list[str], parents: dict[str, str | None]) -> list[list[str]]:
+    names_set = set(bone_names)
+    roots = [b for b in bone_names if parents.get(b) not in names_set]
+    chains = []
+    for root in roots:
+        chain = [root]
+        curr = root
+        while True:
+            children = [b for b in bone_names if parents.get(b) == curr and b in names_set]
+            if not children:
+                break
+            curr = children[0]
+            chain.append(curr)
+        chains.append(chain)
+    return chains
+
+
+def _detect_bone_side(bone_names: list[str]) -> str | None:
+    from rigify.utils.naming import mirror_name
+    for b in bone_names:
+        m = mirror_name(b)
+        if m != b:
+            upper = b.upper()
+            if re.search(r"(?:^|[\s._-])L(?:$|[\s._-])", upper) or "左" in b or "LEFT" in upper:
+                return "L"
+            elif re.search(r"(?:^|[\s._-])R(?:$|[\s._-])", upper) or "右" in b or "RIGHT" in upper:
+                return "R"
+    return None
+
+
+def _ensure_default_color_sets(settings):
+    if not settings.color_sets:
+        for name, active, normal, select in RIGIFY_DEFAULT_COLOR_SETS:
+            item = settings.color_sets.add()
+            item.name = name
+            item.active = active
+            item.normal = normal
+            item.select = select
+            item.standard_colors_lock = True
+        settings.root_color_set_name = "Root"
+
+
+def _ensure_collection_config(
+    settings,
+    name: str,
+    color_set: str,
+    visible: bool = True,
+    bone_names: list[str] | None = None,
+):
+    coll = next((c for c in settings.collections if c.name == name), None)
+    if coll is None:
+        coll = settings.collections.add()
+        coll.name = name
+        coll.last_valid_name = name
+        coll.color_set_name = color_set
+        coll.visible_after_generation = visible
+    elif not coll.color_set_name:
+        coll.color_set_name = color_set
+    if bone_names:
+        existing = {r.pattern for r in coll.rules if r.kind == "EXACT"}
+        for b in bone_names:
+            if b not in existing:
+                r = coll.rules.add()
+                r.kind = "EXACT"
+                r.pattern = b
+                existing.add(b)
+    return coll
+
+
+def _set_bone_configuration(
+    settings,
+    bone_name: str,
+    rigify_type: str,
+    chain: list[str] | None = None,
+    parameters: dict | None = None,
+    **compat,
+):
+    item = next((b for b in settings.bones if b.bone_name == bone_name), None)
+    if item is None:
+        item = settings.bones.add()
+        item.bone_name = bone_name
+    item.rigify_type = rigify_type
+    if chain:
+        apply_chain_bones_to_item(item, chain)
+    else:
+        item.chain_bones.clear()
+    if parameters:
+        item.parameters_json = json.dumps(parameters, ensure_ascii=False, sort_keys=True)
+    if compat:
+        _apply_compatibility_to_item(item, compat)
+    return item
+
+
+class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
+    bl_idname = "re_rigify.quick_setup_bones"
+    bl_label = "Quick Setup Bone Configuration"
+    bl_description = "Quickly configure human armature bones (Head, Torso, Arm, Leg, Fingers) with collections and mirroring"
+    bl_options = {"UNDO"}
+
+    body_part: EnumProperty(
+        name="Body Part",
+        items=(
+            ("HEAD", "Head", "Head & neck chain"),
+            ("TORSO", "Torso", "Spine & chest chain"),
+            ("ARM", "Arm / Hand", "Shoulder (super_copy) + arm chain (limbs.arm)"),
+            ("LEG", "Leg", "Thigh, calf, foot... (limbs.leg, supports 3/4/5 bones)"),
+            ("FINGER", "Fingers", "Finger chains (limbs.super_finger)"),
+        ),
+        default="ARM",
+    )
+    mirror_symmetric: BoolProperty(
+        name="Mirror to Opposite Side",
+        description="Automatically configure opposite side if symmetric (.L/.R)",
+        default=True,
+    )
+
+    def invoke(self, context, _event):
+        obj = active_armature(context)
+        if not obj:
+            self.report({"ERROR"}, iface_("Select an armature"))
+            return {"CANCELLED"}
+        selected = _get_selected_bones(context, obj)
+        if not selected:
+            self.report(
+                {"ERROR"},
+                iface_("Select one or more bones in Pose or Edit Mode"),
+            )
+            return {"CANCELLED"}
+
+        names_lower = " ".join(selected).lower()
+        if any(k in names_lower for k in ("arm", "hand", "shoulder", "wrist", "elbow", "肩", "腕", "手首", "ひじ")):
+            self.body_part = "ARM"
+        elif any(k in names_lower for k in ("leg", "foot", "thigh", "knee", "shin", "toe", "ankle", "足", "ひざ", "足首", "つま先")):
+            self.body_part = "LEG"
+        elif any(k in names_lower for k in ("finger", "thumb", "index", "pinky", "ring", "指")):
+            self.body_part = "FINGER"
+        elif any(k in names_lower for k in ("head", "neck", "face", "eye", "首", "頭", "目")):
+            self.body_part = "HEAD"
+        elif any(k in names_lower for k in ("spine", "torso", "hips", "chest", "pelvis", "腰", "上半身", "下半身")):
+            self.body_part = "TORSO"
+        else:
+            self.body_part = "ARM"
+
+        return context.window_manager.invoke_props_dialog(self, width=320)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "body_part")
+        if self.body_part in {"ARM", "LEG", "FINGER"}:
+            layout.prop(self, "mirror_symmetric")
+        obj = active_armature(context)
+        selected = _get_selected_bones(context, obj) if obj else []
+        box = layout.box()
+        box.label(
+            text=format_iface(
+                "Selected Bones: {count}",
+                count=len(selected),
+            ),
+            icon="BONE_DATA",
+            translate=False,
+        )
+
+    def execute(self, context):
+        from rigify.utils.naming import mirror_name
+        from .ui import flush_parameter_carrier, prepare_parameter_carrier, remove_parameter_carrier
+
+        obj = active_armature(context)
+        if not obj:
+            self.report({"ERROR"}, iface_("Select an armature"))
+            return {"CANCELLED"}
+        selected = _get_selected_bones(context, obj)
+        if not selected:
+            self.report(
+                {"ERROR"},
+                iface_("Select one or more bones in Pose or Edit Mode"),
+            )
+            return {"CANCELLED"}
+
+        flush_parameter_carrier()
+        remove_parameter_carrier()
+
+        settings = obj.data.re_rigify
+        _ensure_default_color_sets(settings)
+
+        parents = {b.name: b.parent.name if b.parent else None for b in obj.data.bones}
+        selected_sorted = _topological_sort_bones(selected, parents)
+        side = _detect_bone_side(selected_sorted)
+        side_tag = side or "L"
+        opp_side = "R" if side_tag == "L" else "L"
+
+        with suspend_carrier_updates(), suspend_collection_rename_updates():
+            if self.body_part == "HEAD":
+                chain = selected_sorted
+                root = chain[0]
+                _set_bone_configuration(
+                    settings,
+                    root,
+                    "spines.super_head",
+                    chain=chain,
+                    parameters={"tweak_coll_refs": ["Head Tweak"], "tweak_layers_extra": True},
+                )
+                _ensure_collection_config(settings, "Head", "Special", visible=True, bone_names=chain)
+                _ensure_collection_config(settings, "Head Tweak", "Tweak", visible=False)
+
+            elif self.body_part == "TORSO":
+                chain = selected_sorted
+                root = chain[0]
+                params = {
+                    "make_fk_controls": True,
+                    "fk_coll_refs": ["Torso FK"],
+                    "fk_layers_extra": True,
+                    "tweak_coll_refs": ["Torso Tweak"],
+                    "tweak_layers_extra": True,
+                }
+                if len(chain) == 3:
+                    params["pivot_pos"] = 1
+                _set_bone_configuration(
+                    settings,
+                    root,
+                    "spines.basic_spine",
+                    chain=chain,
+                    parameters=params,
+                )
+                _ensure_collection_config(settings, "Torso", "Special", visible=True, bone_names=chain)
+                _ensure_collection_config(settings, "Torso FK", "FK", visible=False)
+                _ensure_collection_config(settings, "Torso Tweak", "Tweak", visible=False)
+
+            elif self.body_part == "ARM":
+                has_shoulder = len(selected_sorted) >= 4
+                if has_shoulder:
+                    shoulder = selected_sorted[0]
+                    arm_chain = selected_sorted[1:]
+                    _set_bone_configuration(
+                        settings,
+                        shoulder,
+                        "basic.super_copy",
+                        parameters={"super_copy_widget_type": "shoulder", "make_control": True, "make_widget": True},
+                    )
+                else:
+                    shoulder = None
+                    arm_chain = selected_sorted
+
+                _set_bone_configuration(
+                    settings,
+                    arm_chain[0],
+                    "limbs.arm",
+                    chain=arm_chain,
+                    parameters={
+                        "fk_coll_refs": [f"Arm FK.{side_tag}"],
+                        "fk_layers_extra": True,
+                        "tweak_coll_refs": [f"Arm Tweak.{side_tag}"],
+                        "tweak_layers_extra": True,
+                    },
+                )
+                _ensure_collection_config(settings, f"Arm.{side_tag}", "IK", visible=True, bone_names=selected_sorted)
+                _ensure_collection_config(settings, f"Arm FK.{side_tag}", "FK", visible=False)
+                _ensure_collection_config(settings, f"Arm Tweak.{side_tag}", "Tweak", visible=False)
+
+                if self.mirror_symmetric and side:
+                    mirrored_all = [mirror_name(b) for b in selected_sorted]
+                    if all(b in obj.data.bones for b in mirrored_all):
+                        if has_shoulder:
+                            opp_shoulder = mirror_name(shoulder)
+                            opp_arm_chain = [mirror_name(b) for b in arm_chain]
+                            _set_bone_configuration(
+                                settings,
+                                opp_shoulder,
+                                "basic.super_copy",
+                                parameters={"super_copy_widget_type": "shoulder", "make_control": True, "make_widget": True},
+                            )
+                        else:
+                            opp_arm_chain = mirrored_all
+
+                        _set_bone_configuration(
+                            settings,
+                            opp_arm_chain[0],
+                            "limbs.arm",
+                            chain=opp_arm_chain,
+                            parameters={
+                                "fk_coll_refs": [f"Arm FK.{opp_side}"],
+                                "fk_layers_extra": True,
+                                "tweak_coll_refs": [f"Arm Tweak.{opp_side}"],
+                                "tweak_layers_extra": True,
+                            },
+                        )
+                        _ensure_collection_config(settings, f"Arm.{opp_side}", "IK", visible=True, bone_names=mirrored_all)
+                        _ensure_collection_config(settings, f"Arm FK.{opp_side}", "FK", visible=False)
+                        _ensure_collection_config(settings, f"Arm Tweak.{opp_side}", "Tweak", visible=False)
+
+            elif self.body_part == "LEG":
+                chain = list(selected_sorted)
+                if len(chain) == 3:
+                    foot_bone = chain[2]
+                    toe_candidates = [
+                        name for name, parent in parents.items()
+                        if parent == foot_bone and any(k in name.lower() for k in ("toe", "つま先"))
+                    ]
+                    if toe_candidates:
+                        chain.append(toe_candidates[0])
+
+                root = chain[0]
+                _set_bone_configuration(
+                    settings,
+                    root,
+                    "limbs.leg",
+                    chain=chain,
+                    parameters={
+                        "fk_coll_refs": [f"Leg FK.{side_tag}"],
+                        "fk_layers_extra": True,
+                        "tweak_coll_refs": [f"Leg Tweak.{side_tag}"],
+                        "tweak_layers_extra": True,
+                    },
+                )
+                _ensure_collection_config(settings, f"Leg.{side_tag}", "IK", visible=True, bone_names=chain)
+                _ensure_collection_config(settings, f"Leg FK.{side_tag}", "FK", visible=False)
+                _ensure_collection_config(settings, f"Leg Tweak.{side_tag}", "Tweak", visible=False)
+
+                if self.mirror_symmetric and side:
+                    opp_chain = [mirror_name(b) for b in chain]
+                    if all(b in obj.data.bones for b in opp_chain):
+                        _set_bone_configuration(
+                            settings,
+                            opp_chain[0],
+                            "limbs.leg",
+                            chain=opp_chain,
+                            parameters={
+                                "fk_coll_refs": [f"Leg FK.{opp_side}"],
+                                "fk_layers_extra": True,
+                                "tweak_coll_refs": [f"Leg Tweak.{opp_side}"],
+                                "tweak_layers_extra": True,
+                            },
+                        )
+                        _ensure_collection_config(settings, f"Leg.{opp_side}", "IK", visible=True, bone_names=opp_chain)
+                        _ensure_collection_config(settings, f"Leg FK.{opp_side}", "FK", visible=False)
+                        _ensure_collection_config(settings, f"Leg Tweak.{opp_side}", "Tweak", visible=False)
+
+            elif self.body_part == "FINGER":
+                chains = _partition_finger_chains(selected_sorted, parents)
+                for fchain in chains:
+                    froot = fchain[0]
+                    is_thumb = "親指" in froot or "thumb" in froot.lower()
+                    is_mmd = any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in froot)
+                    roll_align = "GLOBAL_NEG_Y" if is_thumb else ("GLOBAL_POS_Z" if is_mmd else "AUTO")
+                    primary_axis = "-X" if is_mmd else "AUTO"
+                    _set_bone_configuration(
+                        settings,
+                        froot,
+                        "limbs.super_finger",
+                        chain=fchain,
+                        parameters={
+                            "tweak_coll_refs": [f"Fingers Tweak.{side_tag}"],
+                            "tweak_layers_extra": True,
+                        },
+                        force_connect_chain=True,
+                        super_finger_primary_axis=primary_axis,
+                        super_finger_roll_alignment=roll_align,
+                    )
+                _ensure_collection_config(settings, f"Fingers.{side_tag}", "Extra", visible=True, bone_names=selected_sorted)
+                _ensure_collection_config(settings, f"Fingers Tweak.{side_tag}", "Tweak", visible=False)
+
+                if self.mirror_symmetric and side:
+                    mirrored_all = [mirror_name(b) for b in selected_sorted]
+                    if all(b in obj.data.bones for b in mirrored_all):
+                        for fchain in chains:
+                            opp_fchain = [mirror_name(b) for b in fchain]
+                            opp_froot = opp_fchain[0]
+                            is_thumb = "親指" in opp_froot or "thumb" in opp_froot.lower()
+                            is_mmd = any("\u4e00" <= c <= "\u9fff" or "\u3040" <= c <= "\u30ff" for c in opp_froot)
+                            roll_align = "GLOBAL_NEG_Y" if is_thumb else ("GLOBAL_POS_Z" if is_mmd else "AUTO")
+                            primary_axis = "-X" if is_mmd else "AUTO"
+                            _set_bone_configuration(
+                                settings,
+                                opp_froot,
+                                "limbs.super_finger",
+                                chain=opp_fchain,
+                                parameters={
+                                    "tweak_coll_refs": [f"Fingers Tweak.{opp_side}"],
+                                    "tweak_layers_extra": True,
+                                },
+                                force_connect_chain=True,
+                                super_finger_primary_axis=primary_axis,
+                                super_finger_roll_alignment=roll_align,
+                            )
+                        _ensure_collection_config(settings, f"Fingers.{opp_side}", "Extra", visible=True, bone_names=mirrored_all)
+                        _ensure_collection_config(settings, f"Fingers Tweak.{opp_side}", "Tweak", visible=False)
+
+        active_name = selected_sorted[0]
+        settings.active_bone_index = next(
+            (idx for idx, b in enumerate(settings.bones) if b.bone_name == active_name),
+            0,
+        )
+        if settings.bones:
+            active_item = settings.bones[settings.active_bone_index]
+            prepare_parameter_carrier(context, obj, active_item, settings.active_bone_index)
+
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Configured {part} for {count} bone(s)",
+                part=self.body_part,
+                count=len(selected_sorted),
+            ),
+        )
+        return {"FINISHED"}
+
+
+class RERIGIFY_OT_ArrangeCollectionUI(bpy.types.Operator):
+    bl_idname = "re_rigify.arrange_collection_ui"
+    bl_label = "Auto Arrange Collection UI"
+    bl_description = "Arrange bone collections into standard categorized UI rows with empty spacing and generation visibility"
+    bl_options = {"UNDO"}
+
+    def execute(self, context):
+        obj = active_armature(context)
+        if not obj:
+            self.report({"ERROR"}, iface_("Select an armature"))
+            return {"CANCELLED"}
+        settings = obj.data.re_rigify
+        if not settings.collections:
+            self.report({"WARNING"}, iface_("No collections to arrange"))
+            return {"CANCELLED"}
+
+        cols_data = [
+            {
+                "name": c.name,
+                "ui_title": c.ui_title,
+                "ui_row": c.ui_row,
+                "row_order": c.row_order,
+                "color_set": c.color_set_name,
+                "visible_after_generation": c.visible_after_generation,
+                "rules": [{"kind": r.kind, "pattern": r.pattern} for r in c.rules],
+            }
+            for c in settings.collections
+        ]
+        arranged = arrange_collection_layout(cols_data)
+        arranged_by_name = {c["name"]: c for c in arranged}
+
+        with suspend_collection_rename_updates():
+            for item in settings.collections:
+                data = arranged_by_name.get(item.name)
+                if data:
+                    item.ui_row = data["ui_row"]
+                    item.row_order = data["row_order"]
+                    item.ui_title = data["ui_title"]
+                    if data.get("color_set"):
+                        item.color_set_name = data["color_set"]
+                    item.visible_after_generation = data["visible_after_generation"]
+
+        _normalize_collection_orders(settings)
+        self.report(
+            {"INFO"},
+            format_iface(
+                "Arranged UI for {count} collection(s)",
+                count=len(settings.collections),
+            ),
+        )
+        return {"FINISHED"}
+
+
 CLASSES = (
     RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove, RERIGIFY_OT_BoneMove,
     RERIGIFY_OT_BoneRuleAdd, RERIGIFY_OT_BoneRuleRemove,
@@ -1355,6 +1856,7 @@ CLASSES = (
     RERIGIFY_OT_Validate, RERIGIFY_OT_Export, RERIGIFY_OT_Import,
     RERIGIFY_OT_ApplyPreset,
     RERIGIFY_OT_Generate, RERIGIFY_OT_RemoveDrive,
+    RERIGIFY_OT_QuickSetupBones, RERIGIFY_OT_ArrangeCollectionUI,
 )
 
 
@@ -1365,4 +1867,7 @@ def register():
 
 def unregister():
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass

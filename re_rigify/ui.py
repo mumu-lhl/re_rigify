@@ -760,6 +760,12 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
         obj = context.object
         settings = obj.data.re_rigify
 
+        quick_box = layout.box()
+        quick_box.label(text="Quick Human Setup", icon="ARMATURE_DATA")
+        quick_row = quick_box.row(align=True)
+        quick_row.operator("re_rigify.quick_setup_bones", text="Create Bone Config", icon="BONE_DATA")
+        quick_row.operator("re_rigify.arrange_collection_ui", text="Arrange Collection UI", icon="ALIGN_JUSTIFY")
+
         row = layout.row()
         row.template_list("RERIGIFY_UL_Bones", "", settings, "bones", settings, "active_bone_index", rows=4)
         buttons = row.column(align=True)
@@ -901,6 +907,8 @@ class RERIGIFY_PT_Collections(_RERIGIFY_PT_Base, bpy.types.Panel):
         layout = self.layout
         settings = context.object.data.re_rigify
 
+        layout.operator("re_rigify.arrange_collection_ui", text="Auto Arrange Collection UI", icon="ALIGN_JUSTIFY")
+
         row = layout.row()
         row.template_list(
             "RERIGIFY_UL_Collections", "", settings, "collections",
@@ -980,6 +988,7 @@ class RERIGIFY_PT_Layout(_RERIGIFY_PT_Base, bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         settings = context.object.data.re_rigify
+        layout.operator("re_rigify.arrange_collection_ui", text="Auto Arrange Collection UI", icon="ALIGN_JUSTIFY")
         if not settings.collections:
             layout.label(text="No collection", icon="INFO")
             return
@@ -1157,6 +1166,9 @@ def unregister():
         bpy.app.handlers.save_pre.remove(_save_pre)
     remove_parameter_carrier()
     for cls in reversed(CLASSES):
-        bpy.utils.unregister_class(cls)
+        try:
+            bpy.utils.unregister_class(cls)
+        except RuntimeError:
+            pass
     if hasattr(bpy.types.WindowManager, "re_rigify_preset"):
         del bpy.types.WindowManager.re_rigify_preset

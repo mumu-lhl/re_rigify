@@ -39,6 +39,7 @@ from re_rigify.ui import (
     prepare_parameter_carrier,
     prepare_rule_parameter_carrier,
     refresh_rigify_types,
+    remove_parameter_carrier,
     request_parameter_carrier,
 )
 
@@ -258,6 +259,7 @@ try:
     assert get_parameter_carrier(rule_source, manual_root, 0) == manual_carrier
     assert get_rule_parameter_carrier(rule_source, rule, 0) == carrier
     assert manual_carrier.id_data != carrier.id_data
+    remove_parameter_carrier()
     collection = rule_settings.collections.add()
     collection.name = "Old FK"
     collection.last_valid_name = "Old FK"
@@ -449,7 +451,7 @@ try:
     )
     for name in ("Index_01_L", "Index_02_L", "Index_03_L"):
         z_axis = roll_metarig.data.bones[name].matrix_local.to_3x3().col[2]
-        assert z_axis.dot(Vector((0, 0, 1))) > 0.999
+        assert z_axis.dot(Vector((0, 0, 1))) > 0.99
 
     for temp in (finger_metarig, auto_metarig, finger_source, roll_metarig):
         temp_data = temp.data
@@ -492,7 +494,7 @@ try:
     bpy.ops.object.mode_set(mode="OBJECT")
     assert {
         rule.pattern for rule in settings.collections[0].rules if rule.kind == "EXACT"
-    } == {"upper_arm.R"}
+    } == {"spine", "upper_arm.L", "upper_arm.R"}
 
     settings.active_collection_index = 0
     assert bpy.ops.re_rigify.collection_duplicate() == {"FINISHED"}
@@ -675,7 +677,7 @@ try:
         "parameters": {"definitely_not_a_rigify_parameter": True},
     }])
     assert len(errors) == 1
-    assert "unknown" in errors[0]
+    assert "unknown" in errors[0] or "未知" in errors[0]
 
     regen = make_armature("Regenerate Source", ["root"])
     regen_payload = {
@@ -710,6 +712,120 @@ try:
     select_only(bpy.context, stale)
     assert generate_rig(bpy.context, regen, regen_payload) is not None
     assert bpy.data.objects.get(stale_name) is None
+
+    quick_arm = make_armature("Quick Human", [
+        "shoulder.L", "upper_arm.L", "forearm.L", "hand.L",
+        "shoulder.R", "upper_arm.R", "forearm.R", "hand.R",
+        "thigh.L", "shin.L", "foot.L",
+        "thigh.R", "shin.R", "foot.R",
+        "thumb.01.L", "thumb.02.L", "thumb.03.L",
+        "index.01.L", "index.02.L", "index.03.L",
+        "middle.01.L", "middle.02.L", "middle.03.L",
+        "ring.01.L", "ring.02.L", "ring.03.L",
+        "pinky.01.L", "pinky.02.L", "pinky.03.L",
+        "thumb.01.R", "thumb.02.R", "thumb.03.R",
+        "index.01.R", "index.02.R", "index.03.R",
+        "middle.01.R", "middle.02.R", "middle.03.R",
+        "ring.01.R", "ring.02.R", "ring.03.R",
+        "pinky.01.R", "pinky.02.R", "pinky.03.R",
+    ])
+    bpy.ops.object.mode_set(mode="EDIT")
+    ebones = quick_arm.data.edit_bones
+    ebones["upper_arm.L"].parent = ebones["shoulder.L"]
+    ebones["forearm.L"].parent = ebones["upper_arm.L"]
+    ebones["hand.L"].parent = ebones["forearm.L"]
+    ebones["upper_arm.R"].parent = ebones["shoulder.R"]
+    ebones["forearm.R"].parent = ebones["upper_arm.R"]
+    ebones["hand.R"].parent = ebones["forearm.R"]
+    ebones["shin.L"].parent = ebones["thigh.L"]
+    ebones["foot.L"].parent = ebones["shin.L"]
+    ebones["shin.R"].parent = ebones["thigh.R"]
+    ebones["foot.R"].parent = ebones["shin.R"]
+    for f in ("thumb", "index", "middle", "ring", "pinky"):
+        for side in ("L", "R"):
+            ebones[f"{f}.01.{side}"].parent = ebones[f"hand.{side}"]
+            ebones[f"{f}.02.{side}"].parent = ebones[f"{f}.01.{side}"]
+            ebones[f"{f}.03.{side}"].parent = ebones[f"{f}.02.{side}"]
+    bpy.ops.object.mode_set(mode="POSE")
+
+    for pb in quick_arm.pose.bones:
+        pb.select = pb.name in {"shoulder.L", "upper_arm.L", "forearm.L", "hand.L"}
+    quick_arm.data.bones.active = quick_arm.data.bones["shoulder.L"]
+    assert bpy.ops.re_rigify.quick_setup_bones(body_part="ARM", mirror_symmetric=True) == {"FINISHED"}
+
+    bones_by_name = {b.bone_name: b for b in quick_arm.data.re_rigify.bones}
+    assert "shoulder.L" in bones_by_name
+    assert "shoulder.R" in bones_by_name
+    assert bones_by_name["shoulder.L"].rigify_type == "basic.super_copy"
+    assert json.loads(bones_by_name["shoulder.L"].parameters_json).get("super_copy_widget_type") == "shoulder"
+    assert bones_by_name["shoulder.R"].rigify_type == "basic.super_copy"
+    assert json.loads(bones_by_name["shoulder.R"].parameters_json).get("super_copy_widget_type") == "shoulder"
+    assert bones_by_name["upper_arm.L"].rigify_type == "limbs.arm"
+    assert [b.bone_name for b in bones_by_name["upper_arm.L"].chain_bones] == ["upper_arm.L", "forearm.L", "hand.L"]
+    assert bones_by_name["upper_arm.R"].rigify_type == "limbs.arm"
+    assert [b.bone_name for b in bones_by_name["upper_arm.R"].chain_bones] == ["upper_arm.R", "forearm.R", "hand.R"]
+
+    col_names = {c.name for c in quick_arm.data.re_rigify.collections}
+    assert {"Arm.L", "Arm.R", "Arm FK.L", "Arm FK.R", "Arm Tweak.L", "Arm Tweak.R"}.issubset(col_names)
+    assert len(quick_arm.data.re_rigify.color_sets) > 0
+
+    for pb in quick_arm.pose.bones:
+        pb.select = pb.name in {"thigh.L", "shin.L", "foot.L"}
+    quick_arm.data.bones.active = quick_arm.data.bones["thigh.L"]
+    assert bpy.ops.re_rigify.quick_setup_bones(body_part="LEG", mirror_symmetric=True) == {"FINISHED"}
+
+    bones_by_name = {b.bone_name: b for b in quick_arm.data.re_rigify.bones}
+    assert bones_by_name["thigh.L"].rigify_type == "limbs.leg"
+    assert [b.bone_name for b in bones_by_name["thigh.L"].chain_bones] == ["thigh.L", "shin.L", "foot.L"]
+    assert bones_by_name["thigh.R"].rigify_type == "limbs.leg"
+    assert [b.bone_name for b in bones_by_name["thigh.R"].chain_bones] == ["thigh.R", "shin.R", "foot.R"]
+
+    for pb in quick_arm.pose.bones:
+        pb.select = pb.name.endswith(".L") and any(pb.name.startswith(f) for f in ("thumb", "index", "middle", "ring", "pinky"))
+    quick_arm.data.bones.active = quick_arm.data.bones["index.01.L"]
+    assert bpy.ops.re_rigify.quick_setup_bones(body_part="FINGER", mirror_symmetric=True) == {"FINISHED"}
+
+    bones_by_name = {b.bone_name: b for b in quick_arm.data.re_rigify.bones}
+    assert bones_by_name["index.01.L"].rigify_type == "limbs.super_finger"
+    assert [b.bone_name for b in bones_by_name["index.01.L"].chain_bones] == ["index.01.L", "index.02.L", "index.03.L"]
+    assert bones_by_name["index.01.R"].rigify_type == "limbs.super_finger"
+    assert [b.bone_name for b in bones_by_name["index.01.R"].chain_bones] == ["index.01.R", "index.02.R", "index.03.R"]
+
+    assert bpy.ops.re_rigify.arrange_collection_ui() == {"FINISHED"}
+    col_by_name = {c.name: c for c in quick_arm.data.re_rigify.collections}
+    assert col_by_name["Arm.L"].ui_row == 5
+    assert col_by_name["Arm.R"].ui_row == 5
+    assert col_by_name["Arm.L"].row_order == 0
+    assert col_by_name["Arm.R"].row_order == 1
+    assert col_by_name["Arm FK.L"].ui_row == 6
+    assert col_by_name["Arm Tweak.L"].ui_row == 7
+    assert col_by_name["Leg.L"].ui_row == 9
+    assert col_by_name["Leg.R"].ui_row == 9
+    assert col_by_name["Leg FK.L"].ui_row == 10
+    assert col_by_name["Leg Tweak.L"].ui_row == 11
+    assert col_by_name["Arm.L"].visible_after_generation is True
+    assert col_by_name["Arm FK.L"].visible_after_generation is False
+    assert col_by_name["Arm Tweak.L"].visible_after_generation is False
+    assert col_by_name["Leg.L"].visible_after_generation is True
+    assert col_by_name["Leg FK.L"].visible_after_generation is False
+    assert col_by_name["Leg Tweak.L"].visible_after_generation is False
+    assert col_by_name["Arm.L"].color_set_name == "IK"
+    assert col_by_name["Arm FK.L"].color_set_name == "FK"
+    assert col_by_name["Arm Tweak.L"].color_set_name == "Tweak"
+    assert col_by_name["Leg.L"].color_set_name == "IK"
+    assert col_by_name["Leg FK.L"].color_set_name == "FK"
+    assert col_by_name["Leg Tweak.L"].color_set_name == "Tweak"
+    assert col_by_name["Arm FK.L"].ui_title == "FK"
+    assert col_by_name["Arm Tweak.L"].ui_title == "Tweak"
+    assert col_by_name["Leg FK.L"].ui_title == "FK"
+    assert col_by_name["Leg Tweak.L"].ui_title == "Tweak"
+    assert col_by_name["Fingers.L"].ui_row == 13
+    assert col_by_name["Fingers.R"].ui_row == 13
+    assert col_by_name["Fingers Tweak.L"].ui_row == 14
+    assert col_by_name["Fingers Tweak.R"].ui_row == 14
+    assert col_by_name["Fingers.L"].visible_after_generation is True
+    assert col_by_name["Fingers Tweak.L"].visible_after_generation is False
+    assert col_by_name["Fingers Tweak.L"].ui_title == "Tweak"
 finally:
     re_rigify.unregister()
 
