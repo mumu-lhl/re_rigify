@@ -135,7 +135,7 @@ class PanelStructureTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef)
         }
         self.assertIn("filter_items", methods)
-        self.assertIn("managed_rule_id", ast.unparse(methods["filter_items"]))
+        self.assertIn("claimed", ast.unparse(methods["filter_items"]))
 
     def test_rule_sync_only_cleans_persistent_bone_rows(self):
         source = Path("re_rigify/rules.py").read_text(encoding="utf-8")
@@ -146,8 +146,8 @@ class PanelStructureTests(unittest.TestCase):
             if isinstance(node, ast.FunctionDef)
         }
         self.assertIn("cleanup_bone_rule_rows", functions)
-        sync_source = ast.unparse(functions["sync_bone_rules"])
-        self.assertNotIn(".bones.add(", sync_source)
+        cleanup_source = ast.unparse(functions["cleanup_bone_rule_rows"])
+        self.assertNotIn(".bones.add(", cleanup_source)
 
     def test_chain_rule_drive_helpers_disable_scale_inheritance(self):
         source = Path("re_rigify/drive.py").read_text(encoding="utf-8")
@@ -212,7 +212,6 @@ class PanelStructureTests(unittest.TestCase):
             "RERIGIFY_OT_BoneRuleAdd",
             "RERIGIFY_OT_BoneRuleRemove",
             "RERIGIFY_OT_BoneRuleMove",
-            "RERIGIFY_OT_BoneRuleSync",
         }.issubset(operator_classes))
 
     def test_bone_rule_panel_draws_chain_mode(self):

@@ -123,7 +123,6 @@ class RERIGIFY_PG_ChainBone(bpy.types.PropertyGroup):
 
 class RERIGIFY_PG_BoneConfig(bpy.types.PropertyGroup):
     collection_selected: BoolProperty(name="Select for Collection", default=False)
-    managed_rule_id: StringProperty(default="", options={"HIDDEN"})
     bone_name: StringProperty(name="Bone", update=_refresh_parameter_carrier)
     rigify_type: StringProperty(name="Rigify Type", update=_refresh_parameter_carrier)
     parameters_json: StringProperty(name="Parameters", default="{}")
@@ -306,10 +305,7 @@ def armature_to_payload(
     include_managed: bool = True,
 ) -> dict:
     settings = armature.re_rigify
-    bones = [
-        item for item in settings.bones
-        if include_managed or not item.managed_rule_id
-    ]
+    bones = list(settings.bones)
     return {
         "format": FORMAT_NAME,
         "schema_version": SCHEMA_VERSION,
@@ -409,8 +405,8 @@ def payload_to_armature(armature: bpy.types.Armature, payload: dict) -> None:
             settings.active_bone_rule_index,
             max(0, len(settings.bone_rules) - 1),
         )
-    from .rules import sync_bone_rules
-    sync_bone_rules(armature)
+    from .rules import cleanup_bone_rule_rows
+    cleanup_bone_rule_rows(armature)
 
 
 def register() -> None:

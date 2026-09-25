@@ -80,7 +80,7 @@ def cleanup_bone_rule_rows(armature) -> int:
             pass
     remove_indices = [
         index for index, item in enumerate(settings.bones)
-        if item.managed_rule_id or item.bone_name in claimed_names
+        if item.bone_name in claimed_names
     ]
     with suspend_carrier_updates():
         for index in reversed(remove_indices):
@@ -90,7 +90,3 @@ def cleanup_bone_rule_rows(armature) -> int:
             max(0, len(settings.bones) - 1),
         )
     return len(remove_indices)
-
-
-def sync_bone_rules(armature) -> tuple[int, int, int]:
-    return 0, 0, cleanup_bone_rule_rows(armature)

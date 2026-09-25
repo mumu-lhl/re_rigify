@@ -21,7 +21,6 @@ DRIVER_COLLECTION_NAME = "Re-Rigify Drivers"
 DRIVE_MAP_PROPERTY = "re_rigify_drive_map"
 ROTATION_DRIVE_MAP_PROPERTY = "re_rigify_rotation_drive_map"
 DISCONNECTED_BONES_PROPERTY = "re_rigify_drive_disconnected_bones"
-_upgrade_enabled = False
 
 
 def _context_state():
@@ -407,62 +406,9 @@ def connect_source_to_rig(source: bpy.types.Object, rig: bpy.types.Object) -> tu
     return mapped, unmatched
 
 
-def upgrade_drive_constraints() -> int:
-    """Keep adapter-based bridges in their required spaces after reloading."""
-    upgraded = 0
-    for obj in getattr(bpy.data, "objects", ()):
-        if obj.type != "ARMATURE" or not obj.pose:
-            continue
-        for pose_bone in obj.pose.bones:
-            for constraint in pose_bone.constraints:
-                if not constraint.name.startswith(CONSTRAINT_PREFIX):
-                    continue
-                if constraint.type == "COPY_TRANSFORMS":
-                    if not constraint.subtarget.startswith(DRIVER_BONE_PREFIX):
-                        continue
-                    constraint.owner_space = "WORLD"
-                    constraint.target_space = "WORLD"
-                    constraint.mix_mode = "REPLACE"
-                    upgraded += 1
-                elif constraint.type == "COPY_ROTATION":
-                    constraint.owner_space = "POSE"
-                    constraint.target_space = "POSE"
-                    constraint.mix_mode = "REPLACE"
-                    upgraded += 1
-        _disconnect_driven_bones(
-            obj,
-            {
-                pose_bone.name
-                for pose_bone in obj.pose.bones
-                if any(
-                    constraint.name.startswith(CONSTRAINT_PREFIX)
-                    and constraint.type == "COPY_TRANSFORMS"
-                    and constraint.subtarget.startswith(DRIVER_BONE_PREFIX)
-                    for constraint in pose_bone.constraints
-                )
-            },
-        )
-    return upgraded
-
-
-def _upgrade_timer():
-    if not _upgrade_enabled:
-        return None
-    if not hasattr(bpy.data, "objects"):
-        return 0.1
-    upgrade_drive_constraints()
-    return None
-
-
 def register() -> None:
-    global _upgrade_enabled
-    _upgrade_enabled = True
-    if not bpy.app.timers.is_registered(_upgrade_timer):
-        bpy.app.timers.register(_upgrade_timer, first_interval=0.0)
+    pass
 
 
 def unregister() -> None:
-    global _upgrade_enabled
-    _upgrade_enabled = False
-    if bpy.app.timers.is_registered(_upgrade_timer):
-        bpy.app.timers.unregister(_upgrade_timer)
+    pass

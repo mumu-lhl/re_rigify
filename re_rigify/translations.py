@@ -500,16 +500,8 @@ def iface_(message: str) -> str:
     return _translate("pgettext_iface", message)
 
 
-def tip_(message: str) -> str:
-    return _translate("pgettext_tip", message)
-
-
 def format_iface(message: str, /, **values: object) -> str:
     return iface_(message).format(**values)
-
-
-def format_tip(message: str, /, **values: object) -> str:
-    return tip_(message).format(**values)
 
 
 def register() -> None:

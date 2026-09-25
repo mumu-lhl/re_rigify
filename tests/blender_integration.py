@@ -22,7 +22,7 @@ from re_rigify.operators import (
     synchronized_payload,
     validate_active,
 )
-from re_rigify.rules import cleanup_bone_rule_rows, sync_bone_rules
+from re_rigify.rules import cleanup_bone_rule_rows
 from re_rigify.drive import (
     DRIVE_MAP_PROPERTY,
     DRIVER_BONE_PREFIX,
@@ -176,7 +176,6 @@ try:
     chain_rule.apply_as_chain = True
     legacy = chain_settings.bones.add()
     legacy.bone_name = "HairA_00"
-    legacy.managed_rule_id = "hair"
     manual_claimed = chain_settings.bones.add()
     manual_claimed.bone_name = "HairB_00"
     manual_claimed.rigify_type = "basic.raw_copy"
@@ -243,7 +242,7 @@ try:
     manual_root = rule_settings.bones.add()
     manual_root.bone_name = "Root"
     manual_root.rigify_type = "basic.raw_copy"
-    assert sync_bone_rules(rule_source.data) == (0, 0, 0)
+    assert cleanup_bone_rule_rows(rule_source.data) == 0
     assert [item.bone_name for item in rule_settings.bones] == ["Root"]
     carrier = prepare_rule_parameter_carrier(
         bpy.context, rule_source, rule, 0,
@@ -286,15 +285,13 @@ try:
     manual_root.collection_selected = True
     rule_settings.active_bone_index = 0
     rule.pattern = "Finger_Index"
-    added, _updated, removed = sync_bone_rules(rule_source.data)
-    assert (added, removed) == (0, 0)
+    assert cleanup_bone_rule_rows(rule_source.data) == 0
     active_rule_bone = rule_settings.bones[rule_settings.active_bone_index]
     assert active_rule_bone.bone_name == "Root"
     assert active_rule_bone.collection_selected
     checked, errors = validate_active(bpy.context)
     assert checked == rule_source
     assert not errors
-    assert not any(item.managed_rule_id for item in rule_settings.bones)
     canonical = synchronized_payload(rule_source, include_managed=False)
     resolved = synchronized_payload(rule_source, include_managed=True)
     assert [item["bone_name"] for item in canonical["bones"]] == ["Root"]
@@ -309,10 +306,6 @@ try:
     assert [
         item.bone_name for item in rule_import.data.re_rigify.bones
     ] == ["Root"]
-    assert not any(
-        item.managed_rule_id
-        for item in rule_import.data.re_rigify.bones
-    )
     rule_import_data = rule_import.data
     bpy.data.objects.remove(rule_import, do_unlink=True)
     bpy.data.armatures.remove(rule_import_data)

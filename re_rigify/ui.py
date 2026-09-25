@@ -376,7 +376,7 @@ class RERIGIFY_UL_Bones(bpy.types.UIList):
         flags = [
             (
                 0
-                if item.managed_rule_id or item.bone_name in claimed
+                if item.bone_name in claimed
                 else self.bitflag_filter_item
             )
             for item in items
@@ -782,11 +782,9 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
         op.selected = False
         if settings.bones:
             item = settings.bones[settings.active_bone_index]
-            managed = bool(item.managed_rule_id)
             layout.use_property_split = True
             layout.use_property_decorate = False
             fields = layout.column()
-            fields.enabled = not managed
             fields.prop_search(
                 item, "bone_name", obj.data, "bones", text="Bone",
             )
@@ -794,9 +792,7 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
             fields.prop_search(
                 item, "rigify_type", context.window_manager, "rigify_types", text="Rig Type"
             )
-            if managed:
-                layout.label(text="Managed by a bone rule", icon="LOCKED")
-            if not managed and item.rigify_type in EXPLICIT_CHAIN_MIN_LENGTHS:
+            if item.rigify_type in EXPLICIT_CHAIN_MIN_LENGTHS:
                 chain = layout.box()
                 chain.label(text="Explicit Chain")
                 row = chain.row()
@@ -875,9 +871,6 @@ class RERIGIFY_PT_BoneParameters(_RERIGIFY_PT_Base, bpy.types.Panel):
             layout.label(text="No configured bone", icon="INFO")
             return
         item = settings.bones[settings.active_bone_index]
-        if item.managed_rule_id:
-            layout.label(text="Managed by a bone rule", icon="LOCKED")
-            return
         carrier = get_parameter_carrier(obj, item, settings.active_bone_index)
         if carrier is not None:
             try:

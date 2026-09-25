@@ -316,7 +316,6 @@ class RERIGIFY_OT_BoneRuleRemove(bpy.types.Operator):
     bl_options = {"UNDO"}
 
     def execute(self, context):
-        from .rules import sync_bone_rules
         from .ui import flush_parameter_carrier, remove_parameter_carrier
 
         obj = active_armature(context)
@@ -332,7 +331,6 @@ class RERIGIFY_OT_BoneRuleRemove(bpy.types.Operator):
             settings.active_bone_rule_index,
             max(0, len(settings.bone_rules) - 1),
         )
-        sync_bone_rules(obj.data)
         return {"FINISHED"}
 
 
@@ -360,37 +358,6 @@ class RERIGIFY_OT_BoneRuleMove(bpy.types.Operator):
         remove_parameter_carrier()
         settings.bone_rules.move(source, target)
         settings.active_bone_rule_index = target
-        return {"FINISHED"}
-
-
-class RERIGIFY_OT_BoneRuleSync(bpy.types.Operator):
-    bl_idname = "re_rigify.bone_rule_sync"
-    bl_label = "Sync Bone Matching Rules"
-    bl_options = {"UNDO"}
-
-    def execute(self, context):
-        from .rules import sync_bone_rules
-        from .ui import flush_parameter_carrier, remove_parameter_carrier
-
-        obj = active_armature(context)
-        if obj is None:
-            return {"CANCELLED"}
-        flush_parameter_carrier()
-        remove_parameter_carrier()
-        try:
-            added, updated, removed = sync_bone_rules(obj.data)
-        except (ConfigError, json.JSONDecodeError) as exc:
-            self.report({"WARNING"}, str(exc))
-            return {"CANCELLED"}
-        self.report(
-            {"INFO"},
-            format_iface(
-                "Rules added {added}, updated {updated}, removed {removed} bones",
-                added=added,
-                updated=updated,
-                removed=removed,
-            ),
-        )
         return {"FINISHED"}
 
 
@@ -1932,7 +1899,7 @@ class RERIGIFY_OT_ArrangeCollectionUI(bpy.types.Operator):
 CLASSES = (
     RERIGIFY_OT_BoneAdd, RERIGIFY_OT_BoneRemove, RERIGIFY_OT_BoneMove,
     RERIGIFY_OT_BoneRuleAdd, RERIGIFY_OT_BoneRuleRemove,
-    RERIGIFY_OT_BoneRuleMove, RERIGIFY_OT_BoneRuleSync,
+    RERIGIFY_OT_BoneRuleMove,
     RERIGIFY_OT_ChainAddSelected, RERIGIFY_OT_ChainRemove, RERIGIFY_OT_ChainMove,
     RERIGIFY_OT_MirrorBoneConfig, RERIGIFY_OT_CopyParametersToSelected,
     RERIGIFY_OT_CollectionAdd, RERIGIFY_OT_CollectionRemove,
