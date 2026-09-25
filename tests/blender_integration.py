@@ -852,6 +852,46 @@ try:
     assert col_by_name["Fingers IK.L"].ui_title == "IK"
     assert col_by_name["Fingers IK.L"].color_set_name == "IK"
     assert col_by_name["Fingers Tweak.L"].ui_title == "Tweak"
+
+    class DummyLayout:
+        def __init__(self):
+            self.use_property_split = False
+            self.use_property_decorate = False
+            self.enabled = True
+        def row(self, *a, **kw): return DummyLayout()
+        def column(self, *a, **kw): return DummyLayout()
+        def box(self, *a, **kw): return DummyLayout()
+        def split(self, *a, **kw): return DummyLayout()
+        def grid_flow(self, *a, **kw): return DummyLayout()
+        def prop(self, *a, **kw): pass
+        def prop_search(self, *a, **kw): pass
+        def label(self, *a, **kw): pass
+        def operator(self, *a, **kw):
+            class DummyOp:
+                pass
+            return DummyOp()
+        def template_list(self, *a, **kw): pass
+        def separator(self, *a, **kw): pass
+        def menu(self, *a, **kw): pass
+
+    class DummyPanel:
+        def __init__(self):
+            self.layout = DummyLayout()
+
+    dummy_panel = DummyPanel()
+    for panel_cls in (
+        re_rigify.ui.RERIGIFY_PT_Main,
+        re_rigify.ui.RERIGIFY_PT_BoneRules,
+        re_rigify.ui.RERIGIFY_PT_BoneRuleParameters,
+        re_rigify.ui.RERIGIFY_PT_Bones,
+        re_rigify.ui.RERIGIFY_PT_BoneParameters,
+        re_rigify.ui.RERIGIFY_PT_Collections,
+        re_rigify.ui.RERIGIFY_PT_CollectionRules,
+        re_rigify.ui.RERIGIFY_PT_Layout,
+        re_rigify.ui.RERIGIFY_PT_Colors,
+        re_rigify.ui.RERIGIFY_PT_Configuration,
+    ):
+        panel_cls.draw(dummy_panel, bpy.context)
 finally:
     re_rigify.unregister()
 

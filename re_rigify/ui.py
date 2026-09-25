@@ -812,12 +812,10 @@ class RERIGIFY_PT_Bones(_RERIGIFY_PT_Base, bpy.types.Panel):
                 op = down.operator("re_rigify.chain_move", text="", icon="TRIA_DOWN")
                 op.direction = 1
             actions = layout.row(align=True)
-            actions.enabled = not managed
             actions.operator("re_rigify.mirror_bone_config", icon="MOD_MIRROR")
             actions.operator("re_rigify.copy_parameters_to_selected", icon="DUPLICATE")
             if (
-                not managed
-                and item.rigify_type
+                item.rigify_type
                 in {
                     "limbs.arm",
                     "limbs.simple_tentacle",
