@@ -422,6 +422,7 @@ class PanelStructureTests(unittest.TestCase):
         self.assertIn("finger_preset:", operator_source)
         self.assertIn("enable_finger_ik:", operator_source)
         self.assertIn("thumb_roll_alignment:", operator_source)
+        self.assertIn("eye_forward_axis:", operator_source)
 
         ui_source = Path("re_rigify/ui.py").read_text(encoding="utf-8")
         self.assertIn('"re_rigify.quick_setup_bones"', ui_source)

@@ -728,6 +728,7 @@ try:
         "middle.01.R", "middle.02.R", "middle.03.R",
         "ring.01.R", "ring.02.R", "ring.03.R",
         "pinky.01.R", "pinky.02.R", "pinky.03.R",
+        "eye.L", "eye.R",
     ])
     bpy.ops.object.mode_set(mode="EDIT")
     ebones = quick_arm.data.edit_bones
@@ -795,8 +796,31 @@ try:
     assert bones_by_name["index.01.R"].super_finger_primary_axis == "-X"
     assert bones_by_name["index.01.R"].super_finger_roll_alignment == "GLOBAL_POS_Z"
 
+    for pb in quick_arm.pose.bones:
+        pb.select = pb.name == "eye.L"
+    quick_arm.data.bones.active = quick_arm.data.bones["eye.L"]
+    assert bpy.ops.re_rigify.quick_setup_bones(body_part="EYE", mirror_symmetric=True, eye_forward_axis="-Y") == {"FINISHED"}
+
+    bones_by_name = {b.bone_name: b for b in quick_arm.data.re_rigify.bones}
+    assert "eye.L" in bones_by_name
+    assert "eye.R" in bones_by_name
+    assert bones_by_name["eye.L"].rigify_type == "face.skin_eye"
+    assert bones_by_name["eye.R"].rigify_type == "face.skin_eye"
+    assert bones_by_name["eye.L"].skin_eye_compatibility is True
+    assert bones_by_name["eye.L"].eye_forward_axis == "-Y"
+    assert bones_by_name["eye.L"].synthetic_lids_fallback is True
+    assert bones_by_name["eye.R"].skin_eye_compatibility is True
+    assert bones_by_name["eye.R"].eye_forward_axis == "-Y"
+    assert bones_by_name["eye.R"].synthetic_lids_fallback is True
+
+    col_names = {c.name for c in quick_arm.data.re_rigify.collections}
+    assert "Face" in col_names
+
     assert bpy.ops.re_rigify.arrange_collection_ui() == {"FINISHED"}
     col_by_name = {c.name: c for c in quick_arm.data.re_rigify.collections}
+    assert col_by_name["Face"].ui_row == 3
+    assert col_by_name["Face"].visible_after_generation is True
+    assert col_by_name["Face"].color_set_name == "Special"
     assert col_by_name["Arm.L"].ui_row == 5
     assert col_by_name["Arm.R"].ui_row == 5
     assert col_by_name["Arm.L"].row_order == 0

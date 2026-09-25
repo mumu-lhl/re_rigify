@@ -1475,7 +1475,7 @@ def _set_bone_configuration(
 class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
     bl_idname = "re_rigify.quick_setup_bones"
     bl_label = "Quick Setup Bone Configuration"
-    bl_description = "Quickly configure human armature bones (Head, Torso, Arm, Leg, Fingers) with collections and mirroring"
+    bl_description = "Quickly configure human armature bones (Head, Torso, Arm, Leg, Fingers, Eyes) with collections and mirroring"
     bl_options = {"UNDO"}
 
     body_part: EnumProperty(
@@ -1486,6 +1486,7 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
             ("ARM", "Arm / Hand", "Shoulder (super_copy) + arm chain (limbs.arm)"),
             ("LEG", "Leg", "Thigh, calf, foot... (limbs.leg, supports 3/4/5 bones)"),
             ("FINGER", "Fingers", "Finger chains (limbs.super_finger)"),
+            ("EYE", "Eyes", "Eye controllers (face.skin_eye)"),
         ),
         default="ARM",
     )
@@ -1493,6 +1494,18 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
         name="Mirror to Opposite Side",
         description="Automatically configure opposite side if symmetric (.L/.R)",
         default=True,
+    )
+    eye_forward_axis: EnumProperty(
+        name="Eye Forward Axis",
+        description="Forward gazing direction of the eye bone",
+        items=(
+            ("-Y", "-Y (MMD / Standard Front)", "Point the temporary eye bone along negative Y"),
+            ("+Y", "+Y", "Point the temporary eye bone along positive Y"),
+            ("+X", "+X", "Point the temporary eye bone along positive X"),
+            ("-X", "-X", "Point the temporary eye bone along negative X"),
+            ("AUTO", "Auto", "Infer the horizontal viewing direction from eyelid bones"),
+        ),
+        default="-Y",
     )
     finger_preset: EnumProperty(
         name="Finger Curl Preset",
@@ -1530,13 +1543,15 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
             return {"CANCELLED"}
 
         names_lower = " ".join(selected).lower()
-        if any(k in names_lower for k in ("arm", "hand", "shoulder", "wrist", "elbow", "肩", "腕", "手首", "ひじ")):
+        if any(k in names_lower for k in ("eye", "pupil", "目", "瞳")):
+            self.body_part = "EYE"
+        elif any(k in names_lower for k in ("arm", "hand", "shoulder", "wrist", "elbow", "肩", "腕", "手首", "ひじ")):
             self.body_part = "ARM"
         elif any(k in names_lower for k in ("leg", "foot", "thigh", "knee", "shin", "toe", "ankle", "足", "ひざ", "足首", "つま先")):
             self.body_part = "LEG"
         elif any(k in names_lower for k in ("finger", "thumb", "index", "pinky", "ring", "指")):
             self.body_part = "FINGER"
-        elif any(k in names_lower for k in ("head", "neck", "face", "eye", "首", "頭", "目")):
+        elif any(k in names_lower for k in ("head", "neck", "face", "首", "頭")):
             self.body_part = "HEAD"
         elif any(k in names_lower for k in ("spine", "torso", "hips", "chest", "pelvis", "腰", "上半身", "下半身")):
             self.body_part = "TORSO"
@@ -1548,9 +1563,13 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
     def draw(self, context):
         layout = self.layout
         layout.prop(self, "body_part")
-        if self.body_part in {"ARM", "LEG", "FINGER"}:
+        if self.body_part in {"ARM", "LEG", "FINGER", "EYE"}:
             layout.prop(self, "mirror_symmetric")
-        if self.body_part == "FINGER":
+        if self.body_part == "EYE":
+            box = layout.box()
+            box.label(text=iface_("Eye Options"), icon="HIDE_OFF")
+            box.prop(self, "eye_forward_axis")
+        elif self.body_part == "FINGER":
             box = layout.box()
             box.label(text=iface_("Finger Options"), icon="HAND")
             box.prop(self, "finger_preset")
@@ -1816,6 +1835,26 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                         if self.enable_finger_ik:
                             _ensure_collection_config(settings, f"Fingers IK.{opp_side}", "IK", visible=False)
                         _ensure_collection_config(settings, f"Fingers Tweak.{opp_side}", "Tweak", visible=False)
+
+            elif self.body_part == "EYE":
+                configured_eyes = list(selected_sorted)
+                if self.mirror_symmetric and side:
+                    mirrored_all = [mirror_name(b) for b in selected_sorted]
+                    for opp_bone in mirrored_all:
+                        if opp_bone in obj.data.bones and opp_bone not in configured_eyes:
+                            configured_eyes.append(opp_bone)
+
+                for eye_name in configured_eyes:
+                    _set_bone_configuration(
+                        settings,
+                        eye_name,
+                        "face.skin_eye",
+                        parameters={},
+                        skin_eye_compatibility=True,
+                        eye_forward_axis=self.eye_forward_axis,
+                        synthetic_lids_fallback=True,
+                    )
+                _ensure_collection_config(settings, "Face", "Special", visible=True, bone_names=configured_eyes)
 
         active_name = selected_sorted[0]
         settings.active_bone_index = next(

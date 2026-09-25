@@ -27,8 +27,8 @@ _ZH_HANS_DEFAULT = {
     "Create Bone Config": "创建骨骼配置",
     "Quick Human Setup": "人体快速配置",
     "Quick Setup Bone Configuration": "快速创建骨骼配置",
-    "Quickly configure human armature bones (Head, Torso, Arm, Leg, Fingers) with collections and mirroring": (
-        "快速配置人体骨架骨骼（头部、躯干、手、腿、手指），自动生成集合与镜像"
+    "Quickly configure human armature bones (Head, Torso, Arm, Leg, Fingers, Eyes) with collections and mirroring": (
+        "快速配置人体骨架骨骼（头部、躯干、手、腿、手指、眼睛），自动生成集合与镜像"
     ),
     "Body Part": "身体部位",
     "Head": "头部",
@@ -41,6 +41,12 @@ _ZH_HANS_DEFAULT = {
     "Thigh, calf, foot... (limbs.leg, supports 3/4/5 bones)": "大腿/小腿/脚... (limbs.leg，支持3/4/5骨)",
     "Fingers": "手指",
     "Finger chains (limbs.super_finger)": "手指链 (limbs.super_finger)",
+    "Eyes": "眼睛",
+    "Eye controllers (face.skin_eye)": "眼睛控制器 (face.skin_eye)",
+    "Eye Options": "眼睛选项",
+    "Eye Forward Axis": "眼睛朝向轴",
+    "Forward gazing direction of the eye bone": "眼球骨骼的注视正面朝向",
+    "-Y (MMD / Standard Front)": "-Y（MMD / 标准正面）",
     "Finger Options": "手指选项",
     "Finger Curl Preset": "手指弯曲预设",
     "MMR Style (-X Curl)": "MMR 风格 (-X 握拳)",
