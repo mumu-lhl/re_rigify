@@ -216,6 +216,39 @@ def configured_drive_bone_names(
 
 
 
+def rerigify_mirror_name(name: str) -> str:
+    """Mirror bone and collection names for both suffix and prefix naming conventions."""
+    try:
+        from rigify.utils.naming import mirror_name
+        m = mirror_name(name)
+        if m != name:
+            return m
+    except ImportError:
+        pass
+    # Suffix fallback when rigify is not available
+    match = re.search(r"([._-])([LR])$", name, re.IGNORECASE)
+    if match:
+        sep, side = match.groups()
+        opp = "R" if side.upper() == "L" else "L"
+        opp = opp.lower() if side.islower() else opp
+        return name[:match.start()] + sep + opp
+    # Prefix L/R (e.g. LArm -> RArm, LShoulder -> RShoulder, LEye_0_0 -> REye_0_0)
+    if re.match(r"^L(?=[A-Z_])", name):
+        return "R" + name[1:]
+    if re.match(r"^R(?=[A-Z_])", name):
+        return "L" + name[1:]
+    # Prefix Left/Right
+    if re.match(r"^Left(?=[A-Z_])", name):
+        return "Right" + name[4:]
+    if re.match(r"^Right(?=[A-Z_])", name):
+        return "Left" + name[5:]
+    if "左" in name:
+        return name.replace("左", "右")
+    if "右" in name:
+        return name.replace("右", "左")
+    return name
+
+
 def mirror_parameter_value(value: Any, name_mapper) -> Any:
     """Recursively mirror bone-name strings inside Rigify parameter values."""
     if isinstance(value, dict):

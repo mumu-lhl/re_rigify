@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import math
 
 import bpy
+from mathutils import Vector
 
 from .core import (
     ConfigError,
@@ -244,26 +246,36 @@ def apply_generated_root_color(
 def fix_generated_control_display(rig: bpy.types.Object) -> dict[str, int]:
     """Correct display-only quirks on a freshly generated Rigify rig.
 
-    - Shoulder widgets bulge along the bone +Z axis. Mirrored MMD shoulders often
-      have -Z world-up on the right side, so the widget looks upside-down. Flip
-      custom-shape Z scale when the bone Z axis points downward.
-    - hips/chest control bones are intentionally Y-aligned by Rigify; do not
-      rewrite those rest orientations here (constraints depend on them).
+    - Shoulder widgets: Bulge along local +Z. When the shoulder bone's rest matrix
+      has its local Z pointing horizontally (e.g. forward/back from an armature with
+      90-deg X rotation), rotate the custom shape around Y by 90 degrees so the widget
+      sits upright on top of the shoulder (pointing +Z world). If pointing downward,
+      flip the Z scale.
+    - Chest widget: If MCH-WGT-chest is rotated 90 degrees (e.g. from an armature with
+      rolled spine bones), rotate the chest custom shape 90 degrees around Y so the
+      widget aligns horizontally with the torso.
+    - Eye *_master controls: Hide redundant eye socket controls when eyes are configured.
     """
     if rig is None or rig.type != "ARMATURE":
         return {"shoulders_flipped": 0, "synthetic_lids_hidden": 0}
     flipped = 0
-    world_up = (0.0, 0.0, 1.0)
+    world_up = Vector((0.0, 0.0, 1.0))
+
+    # Align chest widget if MCH-WGT-chest width axis points forward/back instead of left/right
+    chest_pb = rig.pose.bones.get("chest")
+    if chest_pb and chest_pb.custom_shape_transform:
+        wgt_bone = rig.data.bones.get(chest_pb.custom_shape_transform.name)
+        if wgt_bone:
+            col0_x = wgt_bone.matrix_local.to_3x3().col[0]
+            if abs(col0_x[1]) > abs(col0_x[0]):
+                chest_pb.custom_shape_rotation_euler = (0.0, math.radians(90), 0.0)
+
     for pose_bone in rig.pose.bones:
         shape = pose_bone.custom_shape
         if shape is None:
             continue
         shape_name = shape.name.lower()
-        # Generated widgets are named like WGT-<rig>_肩.L; type is only known
-        # from the mesh/name convention used by Rigify shoulder widgets.
         if "shoulder" not in shape_name and "肩" not in pose_bone.name:
-            # Only touch controls that still use the stock shoulder mesh bbox
-            # (y from 0..1, z from 0..+). Avoid flipping unrelated shapes.
             if shape.type == "MESH" and shape.data and shape.data.vertices:
                 ys = [v.co.y for v in shape.data.vertices]
                 zs = [v.co.z for v in shape.data.vertices]
@@ -272,14 +284,25 @@ def fix_generated_control_display(rig: bpy.types.Object) -> dict[str, int]:
             else:
                 continue
         bone = pose_bone.bone
-        z_axis = bone.matrix_local.to_3x3().col[2].normalized()
-        if z_axis.dot(world_up) >= 0.0:
-            continue
-        scale = list(pose_bone.custom_shape_scale_xyz)
-        if scale[2] > 0.0:
-            scale[2] = -scale[2]
-            pose_bone.custom_shape_scale_xyz = scale
-            flipped += 1
+        mat = bone.matrix_local.to_3x3()
+        z_axis = mat.col[2].normalized()
+        # If bone Z axis is pointing mostly horizontal (e.g. forward/back due to 90 deg X rotation)
+        if abs(z_axis.dot(world_up)) < 0.5:
+            desired_local_up = mat.inverted() @ world_up
+            if desired_local_up[0] < -0.5:
+                pose_bone.custom_shape_rotation_euler = (0.0, math.radians(90), 0.0)
+                pose_bone.custom_shape_scale_xyz = (1.0, 1.0, 1.0)
+                flipped += 1
+            elif desired_local_up[0] > 0.5:
+                pose_bone.custom_shape_rotation_euler = (0.0, math.radians(-90), 0.0)
+                pose_bone.custom_shape_scale_xyz = (1.0, 1.0, 1.0)
+                flipped += 1
+        elif z_axis.dot(world_up) < 0.0:
+            scale = list(pose_bone.custom_shape_scale_xyz)
+            if scale[2] > 0.0:
+                scale[2] = -scale[2]
+                pose_bone.custom_shape_scale_xyz = scale
+                flipped += 1
     return {
         "shoulders_flipped": flipped,
         "synthetic_lids_hidden": hide_synthetic_eyelid_controls(rig),
@@ -287,11 +310,12 @@ def fix_generated_control_display(rig: bpy.types.Object) -> dict[str, int]:
 
 
 def hide_synthetic_eyelid_controls(rig: bpy.types.Object) -> int:
-    """Hide Rigify eyelid scaffolding created for eyes without real lids.
+    """Hide Rigify eyelid scaffolding created for eyes without real lids, and eye *_master controls.
 
     ``face.skin_eye`` requires upper/lower child chains. Re-Rigify may inject
     temporary ``RR-lid*`` bones so the eye target/master still generate. Those
     controls cannot drive source eyelids, so hide them on the finished rig.
+    Also hides any generated eye *_master controls which clutter the face.
     """
     if rig is None or rig.type != "ARMATURE":
         return 0
@@ -299,8 +323,11 @@ def hide_synthetic_eyelid_controls(rig: bpy.types.Object) -> int:
     collection = rig.data.collections_all.get("Re-Rigify Hidden Lids")
     for pose_bone in rig.pose.bones:
         name = pose_bone.name
-        # Match helper, deform, and control derivatives of synthetic lid chains.
-        if "RR-lid" not in name and "rr-lid" not in name.lower():
+        is_synthetic_lid = "RR-lid" in name or "rr-lid" in name.lower()
+        is_eye_master = name.endswith("_master") and any(
+            k in name.lower() for k in ("eye", "目", "瞳", "pupil")
+        )
+        if not is_synthetic_lid and not is_eye_master:
             continue
         bone = pose_bone.bone
         bone.hide = True

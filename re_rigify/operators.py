@@ -30,6 +30,7 @@ from .core import (
     move_selected_indices,
     normalize_config,
     remove_collection_references,
+    rerigify_mirror_name,
     unique_blender_name,
     validate_config,
 )
@@ -497,7 +498,7 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
             for bone_name, _rig_type, _chain_bones, _parameters, _compat in snapshots
         }
         for bone_name, _rig_type, _chain_bones, _parameters, _compat in snapshots:
-            target_name = mirror_name(bone_name)
+            target_name = rerigify_mirror_name(bone_name)
             if target_name == bone_name:
                 self.report(
                     {"ERROR"},
@@ -529,7 +530,7 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
         last_target_index = settings.active_bone_index
         with suspend_carrier_updates():
             for bone_name, rig_type, chain_bones, parameters_json, compatibility in snapshots:
-                target_name = mirror_name(bone_name)
+                target_name = rerigify_mirror_name(bone_name)
                 target_index = next(
                     (index for index, item in enumerate(settings.bones) if item.bone_name == target_name),
                     -1,
@@ -541,15 +542,15 @@ class RERIGIFY_OT_MirrorBoneConfig(bpy.types.Operator):
                 target.rigify_type = rig_type
                 apply_chain_bones_to_item(
                     target,
-                    [mirror_name(chain_bone) for chain_bone in chain_bones],
+                    [rerigify_mirror_name(chain_bone) for chain_bone in chain_bones],
                 )
                 target.parameters_json = json.dumps(
-                    mirror_parameter_value(json.loads(parameters_json or "{}"), mirror_name),
+                    mirror_parameter_value(json.loads(parameters_json or "{}"), rerigify_mirror_name),
                     ensure_ascii=False,
                     sort_keys=True,
                 )
                 _apply_compatibility_to_item(
-                    target, mirror_compatibility(compatibility, mirror_name)
+                    target, mirror_compatibility(compatibility, rerigify_mirror_name)
                 )
                 last_target_index = target_index
         for item in settings.bones:
@@ -1364,14 +1365,23 @@ def _partition_finger_chains(bone_names: list[str], parents: dict[str, str | Non
 
 
 def _detect_bone_side(bone_names: list[str]) -> str | None:
-    from rigify.utils.naming import mirror_name
     for b in bone_names:
-        m = mirror_name(b)
+        m = rerigify_mirror_name(b)
         if m != b:
             upper = b.upper()
-            if re.search(r"(?:^|[\s._-])L(?:$|[\s._-])", upper) or "左" in b or "LEFT" in upper:
+            if (
+                re.search(r"(?:^|[\s._-])L(?:$|[\s._-])", upper)
+                or "左" in b
+                or "LEFT" in upper
+                or re.match(r"^L(?=[A-Z_])", b)
+            ):
                 return "L"
-            elif re.search(r"(?:^|[\s._-])R(?:$|[\s._-])", upper) or "右" in b or "RIGHT" in upper:
+            elif (
+                re.search(r"(?:^|[\s._-])R(?:$|[\s._-])", upper)
+                or "右" in b
+                or "RIGHT" in upper
+                or re.match(r"^R(?=[A-Z_])", b)
+            ):
                 return "R"
     return None
 
@@ -1652,11 +1662,11 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                 _ensure_collection_config(settings, f"Arm Tweak.{side_tag}", "Tweak", visible=False)
 
                 if self.mirror_symmetric and side:
-                    mirrored_all = [mirror_name(b) for b in selected_sorted]
+                    mirrored_all = [rerigify_mirror_name(b) for b in selected_sorted]
                     if all(b in obj.data.bones for b in mirrored_all):
                         if has_shoulder:
-                            opp_shoulder = mirror_name(shoulder)
-                            opp_arm_chain = [mirror_name(b) for b in arm_chain]
+                            opp_shoulder = rerigify_mirror_name(shoulder)
+                            opp_arm_chain = [rerigify_mirror_name(b) for b in arm_chain]
                             _set_bone_configuration(
                                 settings,
                                 opp_shoulder,
@@ -1711,7 +1721,7 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                 _ensure_collection_config(settings, f"Leg Tweak.{side_tag}", "Tweak", visible=False)
 
                 if self.mirror_symmetric and side:
-                    opp_chain = [mirror_name(b) for b in chain]
+                    opp_chain = [rerigify_mirror_name(b) for b in chain]
                     if all(b in obj.data.bones for b in opp_chain):
                         _set_bone_configuration(
                             settings,
@@ -1766,10 +1776,10 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
                 _ensure_collection_config(settings, f"Fingers Tweak.{side_tag}", "Tweak", visible=False)
 
                 if self.mirror_symmetric and side:
-                    mirrored_all = [mirror_name(b) for b in selected_sorted]
+                    mirrored_all = [rerigify_mirror_name(b) for b in selected_sorted]
                     if all(b in obj.data.bones for b in mirrored_all):
                         for fchain in chains:
-                            opp_fchain = [mirror_name(b) for b in fchain]
+                            opp_fchain = [rerigify_mirror_name(b) for b in fchain]
                             opp_froot = opp_fchain[0]
                             is_thumb = "親指" in opp_froot or "thumb" in opp_froot.lower() or "拇指" in opp_froot
                             if self.finger_preset == "MMR":
@@ -1806,7 +1816,7 @@ class RERIGIFY_OT_QuickSetupBones(bpy.types.Operator):
             elif self.body_part == "EYE":
                 configured_eyes = list(selected_sorted)
                 if self.mirror_symmetric and side:
-                    mirrored_all = [mirror_name(b) for b in selected_sorted]
+                    mirrored_all = [rerigify_mirror_name(b) for b in selected_sorted]
                     for opp_bone in mirrored_all:
                         if opp_bone in obj.data.bones and opp_bone not in configured_eyes:
                             configured_eyes.append(opp_bone)

@@ -20,6 +20,7 @@ from re_rigify.core import (
     mirror_parameter_value,
     rename_collection_references,
     remove_collection_references,
+    rerigify_mirror_name,
     resolve_bone_rules,
     resolve_bone_rule_rows,
     resolve_collection_rules,
@@ -1300,6 +1301,20 @@ class ConfigValidationTests(unittest.TestCase):
         mirrored = mirror_parameter_value(value, lambda name: name.replace("_L", "_R"))
 
         self.assertEqual(mirrored, {"target": "Arm_R", "nested": ["Hand_R", 3, True]})
+
+    def test_rerigify_mirror_name_supports_prefix_and_suffix(self):
+        self.assertEqual(rerigify_mirror_name("Arm.L"), "Arm.R")
+        self.assertEqual(rerigify_mirror_name("Arm.R"), "Arm.L")
+        self.assertEqual(rerigify_mirror_name("LArm"), "RArm")
+        self.assertEqual(rerigify_mirror_name("RArm"), "LArm")
+        self.assertEqual(rerigify_mirror_name("LShoulder"), "RShoulder")
+        self.assertEqual(rerigify_mirror_name("RShoulder"), "LShoulder")
+        self.assertEqual(rerigify_mirror_name("LEye_0_0"), "REye_0_0")
+        self.assertEqual(rerigify_mirror_name("REye_0_0"), "LEye_0_0")
+        self.assertEqual(rerigify_mirror_name("LeftArm"), "RightArm")
+        self.assertEqual(rerigify_mirror_name("RightArm"), "LeftArm")
+        self.assertEqual(rerigify_mirror_name("腕_左"), "腕_右")
+        self.assertEqual(rerigify_mirror_name("Spine"), "Spine")
 
     def test_normalize_round_trip_shape(self):
         payload = {

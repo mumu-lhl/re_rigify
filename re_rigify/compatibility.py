@@ -303,7 +303,13 @@ def _axis_vector(axis: str, eye_head: Point, landmarks: list[EyeLandmark]) -> Po
 
 def _side_suffix(name: str) -> str:
     match = re.search(r"(?:[._-])([LR])$", name, re.IGNORECASE)
-    return f".{match.group(1).upper()}" if match else ""
+    if match:
+        return f".{match.group(1).upper()}"
+    # Detect prefix-style L/R naming (e.g. LEye_0_0, REye_0_0).
+    prefix_match = re.match(r"^([LR])(?=[A-Z_])", name)
+    if prefix_match:
+        return f".{prefix_match.group(1).upper()}"
+    return ""
 
 
 def _synthetic_landmarks(
@@ -511,12 +517,14 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
     from mathutils import Vector
 
     bpy.ops.object.mode_set(mode="EDIT")
+    actual_names: dict[int, dict[str, str]] = {}
     try:
         edit_bones = obj.data.edit_bones
         apply_connection_operations(edit_bones, plan.connections)
-        for eye_plan in plan.eye_plans:
+        for plan_idx, eye_plan in enumerate(plan.eye_plans):
             eye = edit_bones[eye_plan.eye_name]
             eye.tail = eye.head + Vector(eye_plan.forward_axis) * eye.length
+            names_map: dict[str, str] = {}
             for chain in (eye_plan.upper, eye_plan.lower):
                 previous = None
                 for segment in chain:
@@ -526,8 +534,10 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
                     helper.parent = previous or eye
                     helper.use_connect = previous is not None
                     previous = helper
+                    names_map[segment.helper_name] = helper.name
                     if segment.source_name:
                         plan.source_to_helper[segment.source_name] = helper.name
+            actual_names[plan_idx] = names_map
     finally:
         bpy.ops.object.mode_set(mode="OBJECT")
 
@@ -572,17 +582,20 @@ def apply_compatibility_plan(obj, plan: CompatibilityPlan) -> dict[str, str]:
             if hasattr(parameters, "primary_rotation_axis"):
                 parameters.primary_rotation_axis = finger_plan.primary_rotation_axis
 
-    for eye_plan in plan.eye_plans:
+    for plan_idx, eye_plan in enumerate(plan.eye_plans):
         eye_bone = obj.data.bones[eye_plan.eye_name]
+        names_map = actual_names.get(plan_idx, {})
         for chain in (eye_plan.upper, eye_plan.lower):
-            root = obj.pose.bones[chain[0].helper_name]
+            real_root = names_map.get(chain[0].helper_name, chain[0].helper_name)
+            root = obj.pose.bones[real_root]
             root.rigify_type = "skin.stretchy_chain"
             if hasattr(root.rigify_parameters, "skin_chain_pivot_pos"):
                 root.rigify_parameters.skin_chain_pivot_pos = max(1, len(chain) // 2)
             if hasattr(root.rigify_parameters, "bbones"):
                 root.rigify_parameters.bbones = 5
             for segment in chain:
-                helper_bone = obj.data.bones[segment.helper_name]
+                real_name = names_map.get(segment.helper_name, segment.helper_name)
+                helper_bone = obj.data.bones[real_name]
                 # Synthetic lids (source_name is None) are only scaffolding for
                 # face.skin_eye. Keep them out of the eye's UI collections so
                 # Face stays eyeball-only for MMD-style presets.
